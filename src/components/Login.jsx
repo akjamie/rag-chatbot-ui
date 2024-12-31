@@ -4,14 +4,14 @@ function Login({ setIsAuthenticated, setUser }) {
   const handleMockLogin = () => {
     // Mock user data with consistent user_id
     const mockUser = {
-      user_id: 'user_001',  // Consistent user_id for API calls
+      id: '005',  // Changed from user_id to id to be consistent
       name: 'Test User',
       email: 'test@example.com',
       imageUrl: 'https://ui-avatars.com/api/?name=Test+User'
     };
     
     // Store mock auth data
-    localStorage.setItem('token', `mock-token-${mockUser.user_id}`);
+    localStorage.setItem('token', `mock-token-${mockUser.id}`);
     localStorage.setItem('user', JSON.stringify(mockUser));
     
     setUser(mockUser);
