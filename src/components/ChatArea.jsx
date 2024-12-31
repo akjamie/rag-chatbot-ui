@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   Box, TextField, IconButton, Paper, Avatar, Typography,
-  Button, Snackbar, Alert
+  Button, Snackbar, Alert, TableContainer, Table, TableHead, TableBody, TableRow, TableCell
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import MicIcon from '@mui/icons-material/Mic';
@@ -125,7 +125,9 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     setIsLoading(true);
 
     try {
-      // Add user message immediately
+      console.log('Current sessionId before sending:', sessionId);
+
+      // Add user message immediately with current sessionId
       const newMessage = {
         user_input: questionText,
         response: null,
@@ -134,20 +136,26 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       };
       setMessages(prev => [...prev, newMessage]);
 
-      // Send query to backend with proper headers and body
-      const response = await sendChatQuery(
-        questionText,
-        {
-          'user-id': user.id,
-          ...(sessionId && { 'session-id': sessionId })
-        }
-      );
+      // Prepare headers with correct header names
+      const headers = {
+        'X-User-Id': user.id
+      };
 
-      // Get session ID from response headers
-      const responseSessionId = response.headers['session-id'];
+      // Only add session-id if we have one
+      if (sessionId) {
+        headers['X-Session-Id'] = sessionId;
+        console.log('Sending with session ID:', sessionId);
+      }
+
+      // Send query to backend with proper headers
+      const response = await sendChatQuery(questionText, headers);
+
+      // Get session ID from response headers for new chats
+      const responseSessionId = sessionId || response.headers['X-Session-Id'];
+      console.log('Response session ID:', responseSessionId);
       
-      // For new chat, update session with server-provided session ID
-      if (responseSessionId && !sessionId) {
+      if (!sessionId && responseSessionId) {
+        console.log('Setting new session ID:', responseSessionId);
         setSessionId(responseSessionId);
         onNewSession({
           session_id: responseSessionId,
@@ -156,14 +164,14 @@ function ChatArea({ selectedChat, onNewSession, user }) {
         });
       }
 
-      // Update message with response - handle both data formats
+      // Update message with response - use existing sessionId if available
       setMessages(prev => prev.map(msg => 
         msg.user_input === questionText && !msg.response
           ? {
               ...msg,
               response: response.data.data?.answer || response.data.answer,
-              request_id: response.headers['request-id'],
-              session_id: responseSessionId || sessionId,
+              request_id: response.headers['X-Request-Id'],
+              session_id: sessionId || responseSessionId,
               suggested_questions: response.data.data?.suggested_questions || response.data.suggested_questions || [],
               citations: response.data.data?.citations || response.data.citations || [],
               output_format: response.data.data?.metadata?.output_format || response.data.metadata?.output_format || 'text'
@@ -243,15 +251,22 @@ function ChatArea({ selectedChat, onNewSession, user }) {
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({node, ...props}) => <Typography {...props} />,
+                // Basic text elements
+                p: ({node, ...props}) => <Typography {...props} paragraph />,
+                h1: ({node, ...props}) => <Typography variant="h4" {...props} gutterBottom />,
+                h2: ({node, ...props}) => <Typography variant="h5" {...props} gutterBottom />,
+                h3: ({node, ...props}) => <Typography variant="h6" {...props} gutterBottom />,
+                
+                // Code blocks
                 pre: ({node, ...props}) => (
                   <Box sx={{ 
                     bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.05) : '#f5f5f5',
                     p: 2,
                     borderRadius: 1,
-                    overflow: 'auto'
+                    overflow: 'auto',
+                    my: 2
                   }}>
-                    <pre {...props} />
+                    <pre style={{ margin: 0 }} {...props} />
                   </Box>
                 ),
                 code: ({node, inline, ...props}) => (
@@ -262,12 +277,55 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                         bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.1) : '#f5f5f5',
                         px: 0.5,
                         py: 0.25,
-                        borderRadius: 0.5
+                        borderRadius: 0.5,
+                        fontFamily: 'monospace'
                       }}
                       {...props} 
                     /> :
-                    <code {...props} />
-                )
+                    <code style={{ fontFamily: 'monospace' }} {...props} />
+                ),
+
+                // Lists
+                ul: ({node, ...props}) => (
+                  <Box component="ul" sx={{ pl: 2, my: 1 }} {...props} />
+                ),
+                ol: ({node, ...props}) => (
+                  <Box component="ol" sx={{ pl: 2, my: 1 }} {...props} />
+                ),
+                li: ({node, ...props}) => (
+                  <Box component="li" sx={{ my: 0.5 }} {...props} />
+                ),
+
+                // Tables
+                table: ({node, ...props}) => (
+                  <TableContainer component={Paper} sx={{ my: 2 }}>
+                    <Table size="small" {...props} />
+                  </TableContainer>
+                ),
+                thead: ({node, ...props}) => <TableHead {...props} />,
+                tbody: ({node, ...props}) => <TableBody {...props} />,
+                tr: ({node, ...props}) => <TableRow {...props} />,
+                td: ({node, ...props}) => (
+                  <TableCell 
+                    {...props}
+                    sx={{ 
+                      borderBottom: '1px solid',
+                      borderColor: 'divider'
+                    }} 
+                  />
+                ),
+                th: ({node, ...props}) => (
+                  <TableCell 
+                    component="th"
+                    {...props}
+                    sx={{ 
+                      fontWeight: 'bold',
+                      borderBottom: '2px solid',
+                      borderColor: 'divider',
+                      bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.05) : '#f5f5f5'
+                    }} 
+                  />
+                ),
               }}
             >
               {message.response}

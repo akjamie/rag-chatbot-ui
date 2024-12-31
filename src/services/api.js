@@ -86,9 +86,20 @@ export const deleteChatHistory = async (sessionId) => {
 };
 
 export const sendChatQuery = async (userInput, headers = {}) => {
+  // Transform header names to match server requirements exactly
+  const transformedHeaders = {
+    ...headers,  // Keep any other headers
+    'X-User-Id': headers['X-User-Id'] || headers['user-id'],
+    'X-Session-Id': headers['X-Session-Id'] || headers['session-id']
+  };
+
+  // Remove the old header names to prevent duplication
+  delete transformedHeaders['user-id'];
+  delete transformedHeaders['session-id'];
+
   const response = await api.post('/chat/completion', 
     { user_input: userInput },
-    { headers }
+    { headers: transformedHeaders }
   );
   return response;
 };
