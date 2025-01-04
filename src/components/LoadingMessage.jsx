@@ -1,18 +1,43 @@
-import { Box, CircularProgress, Typography } from '@mui/material';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
+import { Box, CircularProgress, Avatar, Paper } from '@mui/material';
 
 function LoadingMessage() {
   return (
     <Box sx={{ 
-      display: 'flex', 
-      alignItems: 'center', 
+      display: 'flex',
+      alignItems: 'flex-start',
       gap: 2,
-      color: 'text.secondary',
-      p: 2
+      maxWidth: '80%'
     }}>
-      <SmartToyIcon sx={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
-      <Typography variant="body2">AI is thinking...</Typography>
-      <CircularProgress size={16} thickness={4} sx={{ color: 'primary.main' }} />
+      <Avatar 
+        sx={{ 
+          bgcolor: theme => theme.palette.mode === 'dark' ? '#2d2d2d' : '#f8fafc',
+          color: theme => theme.palette.mode === 'dark' ? '#fff' : '#64748b',
+          width: 32,
+          height: 32,
+          border: 1,
+          borderColor: theme => theme.palette.mode === 'dark' 
+            ? 'rgba(255, 255, 255, 0.12)' 
+            : 'rgba(0, 0, 0, 0.12)'
+        }}
+      >
+        AI
+      </Avatar>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          bgcolor: theme => theme.palette.mode === 'dark' 
+            ? 'rgba(255, 255, 255, 0.03)' 
+            : '#f8fafc',
+          borderRadius: 2,
+          minWidth: 60,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
+        <CircularProgress size={20} />
+      </Paper>
     </Box>
   );
 }

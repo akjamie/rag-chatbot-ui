@@ -19,7 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { deleteChatHistory } from '../services/api.js';
 
-function ChatHistory({ histories, onSelectChat, onDeleteHistory, currentSession, onNewChat }) {
+function ChatHistory({ histories = [], onSelectChat, onDeleteHistory, currentSession, onNewChat }) {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, sessionId: null });
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
@@ -74,92 +74,102 @@ function ChatHistory({ histories, onSelectChat, onDeleteHistory, currentSession,
     }
   };
 
+  const handleNewChat = () => {
+    onSelectChat(null);
+    if (onNewChat) {
+      onNewChat();
+    }
+  };
+
+  if (!Array.isArray(histories)) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography color="text.secondary">No chat history available</Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box 
       sx={{ 
         height: '100%', 
-        width: '250px', 
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: theme => theme.palette.mode === 'dark' ? '#1a1a1a' : '#f8f8f8',
-        borderRight: 1,
-        borderColor: 'divider'
+        position: 'relative'
       }}
     >
       <Button
-        variant="contained"
+        variant="newChat"
         startIcon={<AddIcon />}
-        onClick={onNewChat}
+        onClick={handleNewChat}
         sx={{
           m: 2,
-          bgcolor: 'primary.main',
+          bgcolor: '#ff1e1e !important',
           '&:hover': {
-            bgcolor: 'primary.dark',
+            bgcolor: '#e01919 !important'
           }
         }}
       >
         New Chat
       </Button>
       <List sx={{ overflow: 'auto', flexGrow: 1 }}>
-        {histories.map((history) => (
-          <ListItem 
-            key={history.session_id}
-            component="div"
-            onClick={() => {
-              console.log('ListItem clicked:', history);
-              handleSelectChat(history);
-            }}
-            selected={currentSession?.session_id === history.session_id}
-            sx={{ 
-              cursor: 'pointer',
-              bgcolor: currentSession?.session_id === history.session_id 
-                ? theme => theme.palette.mode === 'dark' 
-                  ? 'rgba(255, 65, 65, 0.1)' 
-                  : 'rgba(255, 65, 65, 0.05)'
-                : 'inherit',
-              '&:hover': {
-                bgcolor: theme => theme.palette.mode === 'dark'
-                  ? 'rgba(255, 65, 65, 0.05)'
-                  : 'rgba(255, 65, 65, 0.02)',
-              },
-              position: 'relative',
-              '& .MuiIconButton-root': {
-                display: 'none'
-              },
-              '&:hover .MuiIconButton-root': {
-                display: 'inline-flex'
-              }
-            }}
-            secondaryAction={
-              <IconButton 
-                edge="end" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(e, history.session_id);
-                }}
-                sx={{ 
-                  color: 'text.secondary',
-                  '&:hover': {
-                    color: 'primary.main'
-                  }
-                }}
-              >
-                <DeleteIcon />
-              </IconButton>
-            }
-          >
+        {histories.length === 0 ? (
+          <ListItem>
             <ListItemText 
-              primary={history.title}
-              primaryTypographyProps={{
-                noWrap: true,
-                sx: { 
-                  fontSize: '0.9rem',
-                  color: 'text.primary'
-                }
-              }}
+              primary="No chat history"
+              primaryTypographyProps={{ color: 'text.secondary' }}
             />
           </ListItem>
-        ))}
+        ) : (
+          histories.map((history) => (
+            <ListItem 
+              key={history.session_id}
+              component="div"
+              onClick={() => handleSelectChat(history)}
+              selected={currentSession?.session_id === history.session_id}
+              sx={{ 
+                cursor: 'pointer',
+                '&.Mui-selected': {
+                  bgcolor: theme => theme.palette.mode === 'dark' 
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : 'rgba(0, 0, 0, 0.04)',
+                },
+                '&:hover': {
+                  bgcolor: theme => theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.04)'
+                    : 'rgba(0, 0, 0, 0.02)',
+                },
+                position: 'relative',
+                '& .MuiIconButton-root': {
+                  display: 'none'
+                },
+                '&:hover .MuiIconButton-root': {
+                  display: 'inline-flex'
+                }
+              }}
+              secondaryAction={
+                <IconButton 
+                  edge="end" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(e, history.session_id);
+                  }}
+                  sx={{ color: 'text.secondary' }}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              }
+            >
+              <ListItemText 
+                primary={history.title}
+                primaryTypographyProps={{
+                  noWrap: true,
+                  sx: { fontSize: '0.9rem' }
+                }}
+              />
+            </ListItem>
+          ))
+        )}
       </List>
 
       {/* Confirmation Dialog */}
@@ -203,17 +213,45 @@ function ChatHistory({ histories, onSelectChat, onDeleteHistory, currentSession,
         </DialogActions>
       </Dialog>
 
-      {/* Toast Notification */}
+      {/* Updated Toast Notification */}
       <Snackbar 
         open={toast.open} 
-        autoHideDuration={6000} 
+        autoHideDuration={4000} 
         onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        sx={{
+          position: 'absolute',
+          top: '24px !important',
+          left: '50% !important',
+          transform: 'translateX(-50%)',
+          width: 'auto',
+          maxWidth: '80%',
+          zIndex: 1400
+        }}
       >
         <Alert 
           onClose={handleCloseToast} 
           severity={toast.severity}
-          sx={{ width: '100%' }}
+          variant="filled"
+          elevation={6}
+          sx={{
+            width: '100%',
+            minWidth: '300px',
+            borderRadius: '8px',
+            boxShadow: theme => theme.palette.mode === 'dark'
+              ? '0 4px 12px rgba(0, 0, 0, 0.5)'
+              : '0 4px 12px rgba(0, 0, 0, 0.15)',
+            '& .MuiAlert-icon': {
+              fontSize: '20px'
+            },
+            '& .MuiAlert-message': {
+              fontSize: '0.9375rem',
+              padding: '4px 0'
+            },
+            '& .MuiAlert-action': {
+              padding: '0 8px'
+            }
+          }}
         >
           {toast.message}
         </Alert>

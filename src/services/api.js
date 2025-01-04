@@ -1,55 +1,40 @@
 import axios from 'axios';
 
-// Get API host from environment variable or use default
-const API_HOST = import.meta.env.VITE_API_HOST || 'http://localhost:8000';
-
 const api = axios.create({
-  baseURL: API_HOST,
+  baseURL: import.meta.env.VITE_API_HOST,
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true // Enable if you need to handle cookies
+  withCredentials: true
 });
 
-// Add request interceptor for auth and user ID
-api.interceptors.request.use(
-  config => {
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // Add user ID to headers if available
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      config.headers['x-user-id'] = user.id;
-    }
-    
-    return config;
-  },
-  error => {
-    return Promise.reject(error);
+// Add request interceptor
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  response => response,
-  error => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    console.error('API Error:', error.response?.data || error.message);
-    return Promise.reject(error);
-  }
-);
+// Add response interceptor to handle custom headers
+api.interceptors.response.use((response) => {
+  // Extract custom headers from response
+  const customHeaders = {
+    'X-Session-Id': response.headers['x-session-id'] || response.headers['X-Session-Id'],
+    'X-Request-Id': response.headers['x-request-id'] || response.headers['X-Request-Id'],
+    'X-User-Id': response.headers['x-user-id'] || response.headers['X-User-Id']
+  };
 
-// Export the getCurrentUser helper function
+  console.log('Response headers:', response.headers);
+  console.log('Extracted custom headers:', customHeaders);
+  
+  // Add custom headers to response object
+  response.customHeaders = customHeaders;
+  
+  return response;
+});
+
 export const getCurrentUser = () => {
   const userStr = localStorage.getItem('user');
   if (!userStr) {
@@ -58,12 +43,29 @@ export const getCurrentUser = () => {
   return JSON.parse(userStr);
 };
 
-export const getChatHistories = async () => {
-  const user = getCurrentUser();
-  console.log('Fetching chat histories for user:', user.id);
-  const response = await api.get(`/chat/histories/${user.id}`);
-  console.log('Chat histories response:', response.data);
-  return response.data.sessions;
+export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
+  try {
+    const params = {
+      page,
+      page_size: pageSize,
+      ...filters
+    };
+    const response = await api.get('/embedding/docs', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching document logs:', error);
+    throw error;
+  }
+};
+
+export const getChatHistories = async (userId) => {
+  try {
+    const response = await api.get(`/chat/histories/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching chat histories:', error);
+    throw error;
+  }
 };
 
 export const getChatHistory = async (sessionId) => {
@@ -72,10 +74,7 @@ export const getChatHistory = async (sessionId) => {
   }
   
   const user = getCurrentUser();
-  console.log('Fetching chat history:', { userId: user.id, sessionId });
-  
   const response = await api.get(`/chat/histories/${user.id}/${sessionId}`);
-  console.log('Chat history response:', response.data);
   return response.data;
 };
 
@@ -86,29 +85,23 @@ export const deleteChatHistory = async (sessionId) => {
 };
 
 export const sendChatQuery = async (userInput, headers = {}) => {
-  // Transform header names to match server requirements exactly
-  const transformedHeaders = {
-    ...headers,  // Keep any other headers
-    'X-User-Id': headers['X-User-Id'] || headers['user-id'],
-    'X-Session-Id': headers['X-Session-Id'] || headers['session-id']
-  };
-
-  // Remove the old header names to prevent duplication
-  delete transformedHeaders['user-id'];
-  delete transformedHeaders['session-id'];
-
-  const response = await api.post('/chat/completion', 
-    { user_input: userInput },
-    { headers: transformedHeaders }
-  );
-  return response;
-};
-
-export const getDocumentIndexLogs = async (page = 1, pageSize = 10, search = '') => {
-  const response = await api.get('/embedding/docs', {
-    params: { page, page_size: pageSize, search }
-  });
-  return response.data;
+  try {
+    const response = await api.post('/chat/completion', 
+      { user_input: userInput },
+      { 
+        headers: {
+          ...headers,
+          // Request server to expose all headers
+          'Access-Control-Request-Headers': '*'
+        },
+        withCredentials: true
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error('Error in sendChatQuery:', error);
+    throw error;
+  }
 };
 
 export const uploadDocument = async (file, sourceType, userId) => {

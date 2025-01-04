@@ -1,24 +1,48 @@
+import { useState, useEffect } from 'react';
 import { 
   AppBar, 
   Toolbar, 
   Typography, 
   IconButton, 
-  Avatar, 
-  Button,
-  Switch,
   Box,
-  Tooltip
+  Tooltip,
+  Menu,
+  MenuItem
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
-import SettingsIcon from '@mui/icons-material/Settings';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import SettingsIcon from '@mui/icons-material/Settings';
+import UserAvatar from './UserAvatar';
 
 function TopBar({ user }) {
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    setCurrentPath(window.location.pathname);
+  }, [window.location.pathname]);
+
+  const handleSettingsClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleManagementClick = () => {
+    handleClose();
+    navigate('/management');
+  };
+
+  const handleChatClick = () => {
+    handleClose();
+    navigate('/');
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -52,7 +76,6 @@ function TopBar({ user }) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Tooltip title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} Mode`}>
             <IconButton 
-              color="inherit" 
               onClick={toggleTheme}
               sx={{ 
                 color: theme => theme.palette.mode === 'dark' ? '#ffffff' : '#666666',
@@ -63,9 +86,8 @@ function TopBar({ user }) {
           </Tooltip>
 
           <Tooltip title="Settings">
-            <IconButton 
-              color="inherit" 
-              onClick={() => navigate('/settings')}
+            <IconButton
+              onClick={handleSettingsClick}
               sx={{ 
                 color: theme => theme.palette.mode === 'dark' ? '#ffffff' : '#666666',
               }}
@@ -74,53 +96,20 @@ function TopBar({ user }) {
             </IconButton>
           </Tooltip>
 
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              ml: 2,
-              pl: 2,
-              borderLeft: 1,
-              borderColor: 'divider'
-            }}
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
           >
-            <Avatar 
-              src={user?.imageUrl} 
-              alt={user?.name}
-              sx={{ 
-                width: 32, 
-                height: 32,
-                border: 1,
-                borderColor: 'divider'
-              }}
-            />
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                color: theme => theme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                fontWeight: 500
-              }}
-            >
-              {user?.name}
-            </Typography>
-            <Button 
-              variant="outlined"
-              size="small"
-              onClick={handleLogout}
-              sx={{
-                ml: 1,
-                borderColor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.2) : alpha('#000000', 0.2),
-                color: theme => theme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                '&:hover': {
-                  borderColor: theme => theme.palette.mode === 'dark' ? '#ffffff' : '#000000',
-                  backgroundColor: theme => alpha(theme.palette.mode === 'dark' ? '#ffffff' : '#000000', 0.05)
-                }
-              }}
-            >
-              Logout
-            </Button>
-          </Box>
+            {currentPath === '/' ? (
+              <MenuItem onClick={handleManagementClick}>Management Console</MenuItem>
+            ) : (
+              <MenuItem onClick={handleChatClick}>Chat Interface</MenuItem>
+            )}
+            <MenuItem onClick={handleLogout}>Logout</MenuItem>
+          </Menu>
+
+          <UserAvatar name={user?.name || 'User'} />
         </Box>
       </Toolbar>
     </AppBar>
