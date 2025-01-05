@@ -12,16 +12,59 @@ import {
   Typography,
   IconButton,
   Collapse,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
   TextField,
+  Select,
   MenuItem,
-  Grid
+  FormControl,
+  InputLabel,
+  Tooltip,
+  IconButton as MuiIconButton,
+  styled,
+  Backdrop,
+  CircularProgress,
+  Snackbar,
+  Alert as MuiAlert
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import UploadIcon from '@mui/icons-material/Upload';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
-import { getDocumentIndexLogs } from '../../services/api';
+import InfoIcon from '@mui/icons-material/Info';
+import { getDocumentIndexLogs, deleteDocumentIndexLog, uploadDocument } from '../../services/api';
 import FilterPanel from './FilterPanel';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
-function Row({ row }) {
+// Styled components
+const InfoIconButton = styled(MuiIconButton)({
+  padding: 4,
+  marginLeft: 4,
+  '& .MuiSvgIcon-root': {
+    fontSize: '1rem'
+  }
+});
+
+function FilterLabel({ label, tooltip }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      {label}
+      <Tooltip title={tooltip} arrow placement="top">
+        <InfoIconButton size="small" color="info">
+          <InfoIcon />
+        </InfoIconButton>
+      </Tooltip>
+    </Box>
+  );
+}
+
+function Row({ row, onDelete }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,21 +75,43 @@ function Row({ row }) {
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
-        <TableCell>{row.filename}</TableCell>
+        <TableCell>{row.source}</TableCell>
         <TableCell>{row.source_type}</TableCell>
         <TableCell>{row.status}</TableCell>
-        <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
+        <TableCell>{row.created_at}</TableCell>
+        <TableCell>{row.created_by}</TableCell>
+        <TableCell>{row.modified_at}</TableCell>
+        <TableCell>{row.modified_by}</TableCell>
+        <TableCell>
+          <IconButton 
+            size="small" 
+            onClick={() => onDelete(row.id)}
+            color="error"
+          >
+            <DeleteIcon />
+          </IconButton>
+        </TableCell>
       </TableRow>
       <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ margin: 1 }}>
-              <Typography variant="h6" gutterBottom component="div">
-                Embedding Chunks
+              <Typography variant="subtitle2" gutterBottom>
+                Additional Information
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                API for embedding chunks not yet available
+                ID: {row.id}
               </Typography>
+              {row.checksum && (
+                <Typography variant="body2" color="text.secondary">
+                  Checksum: {row.checksum}
+                </Typography>
+              )}
+              {row.error_message && (
+                <Typography variant="body2" color="error">
+                  Error: {row.error_message}
+                </Typography>
+              )}
             </Box>
           </Collapse>
         </TableCell>
@@ -55,101 +120,267 @@ function Row({ row }) {
   );
 }
 
+const hasValidFilters = (filters) => {
+  return Boolean(
+    filters.source?.trim() ||
+    (filters.sourceType && filters.sourceType !== 'all') ||
+    (filters.status && filters.status !== 'all') ||
+    filters.createdBy?.trim() ||
+    filters.dateRange?.start ||
+    filters.dateRange?.end
+  );
+};
+
 function DocumentIndexPanel({ user }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [documents, setDocuments] = useState([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [uploadDialog, setUploadDialog] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedSourceType, setSelectedSourceType] = useState('pdf');
   const [filters, setFilters] = useState({
-    search: '',
-    status: 'all',
+    source: '',
     sourceType: 'all',
-    dateRange: 'all'
+    status: 'all',
+    createdBy: '',
+    dateRange: {
+      start: null,
+      end: null
+    }
+  });
+  const [uploadType, setUploadType] = useState('file');
+  const [urlInput, setUrlInput] = useState('');
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    documentId: null
+  });
+  const [toast, setToast] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
   });
 
-  const filterConfig = [
-    {
-      field: 'search',
-      label: 'Search Filename',
-      width: 3
-    },
-    {
-      field: 'status',
-      label: 'Status',
-      type: 'select',
-      width: 2,
-      options: [
-        { value: 'all', label: 'All Status' },
-        { value: 'completed', label: 'Completed' },
-        { value: 'processing', label: 'Processing' },
-        { value: 'failed', label: 'Failed' }
-      ]
-    },
-    {
-      field: 'sourceType',
-      label: 'Source Type',
-      type: 'select',
-      width: 2,
-      options: [
-        { value: 'all', label: 'All Types' },
-        { value: 'pdf', label: 'PDF' },
-        { value: 'doc', label: 'DOC' },
-        { value: 'txt', label: 'TXT' }
-      ]
-    }
-  ];
-
-  useEffect(() => {
-    console.log('DocumentIndexPanel mounted');
-    loadDocuments();
-  }, []);
-
   const loadDocuments = async () => {
-    console.log('Loading documents with:', { page, rowsPerPage, filters });
     try {
+      if (!hasValidFilters(filters)) {
+        setError('Please specify at least one filter criteria');
+        setDocuments([]);
+        setTotal(0);
+        return;
+      }
+
       setIsLoading(true);
+      setError(null);
+
+      console.log('Filters being sent:', filters);
+
       const response = await getDocumentIndexLogs(page + 1, rowsPerPage, {
-        search: filters.search,
-        status: filters.status !== 'all' ? filters.status : undefined,
-        sourceType: filters.sourceType !== 'all' ? filters.sourceType : undefined
+        source: filters.source,
+        sourceType: filters.sourceType,
+        status: filters.status,
+        createdBy: filters.createdBy,
+        dateRange: filters.dateRange
       });
-      console.log('API Response:', response);
-      setDocuments(response.items || []);
-      setTotal(response.total || 0);
+
+      if (Array.isArray(response)) {
+        setDocuments(response);
+        setTotal(response.length);
+      } else if (response.items) {
+        setDocuments(response.items);
+        setTotal(response.total);
+      } else {
+        setDocuments([]);
+        setTotal(0);
+      }
     } catch (error) {
       console.error('Error loading documents:', error);
+      setError('Failed to load documents');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDeleteClick = (id) => {
+    setDeleteDialog({
+      open: true,
+      documentId: id
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteDocumentIndexLog(deleteDialog.documentId);
+      setToast({
+        open: true,
+        message: 'Document deleted successfully',
+        severity: 'success'
+      });
+      loadDocuments();
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      setToast({
+        open: true,
+        message: 'Failed to delete document',
+        severity: 'error'
+      });
+    } finally {
+      setDeleteDialog({
+        open: false,
+        documentId: null
+      });
+    }
+  };
+
+  const handleCloseToast = (event, reason) => {
+    if (reason === 'clickaway') return;
+    setToast(prev => ({ ...prev, open: false }));
+  };
+
+  const handleUpload = async () => {
+    try {
+      if (uploadType === 'url') {
+        if (!urlInput) return;
+        await uploadDocument(urlInput, 'web_page', user.id);
+      } else {
+        if (!selectedFile || !selectedSourceType) return;
+        await uploadDocument(selectedFile, selectedSourceType, user.id);
+      }
+      setUploadDialog(false);
+      setSelectedFile(null);
+      setUrlInput('');
+      loadDocuments();
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      setError('Failed to upload document');
+    }
+  };
+
   const handleSearch = () => {
+    setError(null);
+    
+    if (!hasValidFilters(filters)) {
+      setError('Please specify at least one filter criteria');
+      setDocuments([]);
+      setTotal(0);
+      return;
+    }
+    
     setPage(0);
     loadDocuments();
   };
 
-  const handlePageChange = (event, newPage) => {
-    setPage(newPage);
-    loadDocuments();
-  };
-
-  const handleRowsPerPageChange = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-    loadDocuments();
-  };
-
-  console.log('Render state:', { documents, isLoading, filters });
+  useEffect(() => {
+    if (hasValidFilters(filters)) {
+      loadDocuments();
+    }
+  }, [page, rowsPerPage]);
 
   return (
     <Box>
-      <FilterPanel 
-        filters={filters}
-        onFilterChange={setFilters}
-        onSearch={handleSearch}
-        filterConfig={filterConfig}
-      />
+      <Backdrop
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2
+        }}
+        open={isLoading}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="h6" color="inherit">
+          Loading Documents...
+        </Typography>
+      </Backdrop>
+
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <FilterPanel 
+          filters={filters}
+          onFilterChange={setFilters}
+          onSearch={handleSearch}
+          disabled={isLoading}
+          filterConfig={[
+            {
+              field: 'source',
+              label: 'Source',
+              width: 3
+            },
+            {
+              field: 'sourceType',
+              label: 'Source Type',
+              type: 'select',
+              width: 2,
+              options: [
+                { value: 'all', label: 'All Types' },
+                { value: 'csv', label: 'CSV' },
+                { value: 'pdf', label: 'PDF' },
+                { value: 'text', label: 'Text' },
+                { value: 'json', label: 'JSON' },
+                { value: 'docx', label: 'DOCX' },
+                { value: 'web_page', label: 'Web Page' },
+                { value: 'image', label: 'Image' }
+              ]
+            },
+            {
+              field: 'status',
+              label: 'Status',
+              type: 'select',
+              width: 2,
+              options: [
+                { value: 'all', label: 'All Status' },
+                { value: 'completed', label: 'Completed' },
+                { value: 'processing', label: 'Processing' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'new', label: 'New' }
+              ]
+            },
+            {
+              field: 'createdBy',
+              label: 'Uploaded by',
+              placeholder: 'Uploaded by',
+              width: 2
+            },
+            {
+              field: 'dateRange',
+              label: 'Created Date Range',
+              type: 'daterange',
+              width: 4,
+              startLabel: 'From Date',
+              endLabel: 'To Date'
+            }
+          ]}
+        />
+        <Button
+          variant="contained"
+          startIcon={<UploadIcon />}
+          onClick={() => setUploadDialog(true)}
+          disabled={isLoading}
+          sx={{ 
+            backgroundColor: '#ff1e1e !important',
+            '&:hover': {
+              backgroundColor: '#e01919 !important'
+            }
+          }}
+        >
+          Upload Document
+        </Button>
+      </Box>
+
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ 
+            mb: 2,
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          {error}
+        </Alert>
+      )}
 
       <Paper sx={{ width: '100%', overflow: 'hidden' }}>
         <TableContainer>
@@ -157,28 +388,32 @@ function DocumentIndexPanel({ user }) {
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" />
-                <TableCell>Filename</TableCell>
-                <TableCell>Source Type</TableCell>
+                <TableCell>Source</TableCell>
+                <TableCell>Type</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Created At</TableCell>
+                <TableCell>Created By</TableCell>
+                <TableCell>Modified At</TableCell>
+                <TableCell>Modified By</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={9} align="center">
                     Loading...
                   </TableCell>
                 </TableRow>
               ) : documents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={9} align="center">
                     No documents found
                   </TableCell>
                 </TableRow>
               ) : (
                 documents.map((row) => (
-                  <Row key={row.id} row={row} />
+                  <Row key={row.id} row={row} onDelete={handleDeleteClick} />
                 ))
               )}
             </TableBody>
@@ -190,10 +425,129 @@ function DocumentIndexPanel({ user }) {
           count={total}
           rowsPerPage={rowsPerPage}
           page={page}
-          onPageChange={handlePageChange}
-          onRowsPerPageChange={handleRowsPerPageChange}
+          onPageChange={(event, newPage) => setPage(newPage)}
+          onRowsPerPageChange={(event) => {
+            setRowsPerPage(parseInt(event.target.value, 10));
+            setPage(0);
+          }}
         />
       </Paper>
+
+      <Dialog 
+        open={uploadDialog} 
+        onClose={() => {
+          setUploadDialog(false);
+          setSelectedFile(null);
+          setUrlInput('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Upload Document</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel>Source Type</InputLabel>
+              <Select
+                value={selectedSourceType}
+                onChange={(e) => {
+                  setSelectedSourceType(e.target.value);
+                  setUploadType(e.target.value === 'web_page' ? 'url' : 'file');
+                }}
+                label="Source Type"
+              >
+                <MenuItem value="pdf">PDF</MenuItem>
+                <MenuItem value="csv">CSV</MenuItem>
+                <MenuItem value="text">Text</MenuItem>
+                <MenuItem value="json">JSON</MenuItem>
+                <MenuItem value="docx">DOCX</MenuItem>
+                <MenuItem value="web_page">Web Page</MenuItem>
+                <MenuItem value="image">Image</MenuItem>
+              </Select>
+            </FormControl>
+
+            {uploadType === 'url' ? (
+              <TextField
+                fullWidth
+                label="URL"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="Enter webpage URL"
+              />
+            ) : (
+              <input
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files[0])}
+                accept={
+                  selectedSourceType === 'pdf' ? '.pdf' :
+                  selectedSourceType === 'csv' ? '.csv' :
+                  selectedSourceType === 'text' ? '.txt' :
+                  selectedSourceType === 'json' ? '.json' :
+                  selectedSourceType === 'docx' ? '.docx' :
+                  selectedSourceType === 'image' ? '.jpg,.jpeg,.png' :
+                  undefined
+                }
+              />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={handleUpload}
+            variant="contained"
+            disabled={uploadType === 'url' ? !urlInput : !selectedFile}
+            sx={{ 
+              backgroundColor: '#ff1e1e !important',
+              '&:hover': {
+                backgroundColor: '#e01919 !important'
+              }
+            }}
+          >
+            Upload
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, documentId: null })}
+      >
+        <DialogTitle>Confirm Deletion</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete this document? This action cannot be undone.
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setDeleteDialog({ open: false, documentId: null })}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm}
+            color="error"
+            variant="contained"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={6000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <MuiAlert 
+          onClose={handleCloseToast} 
+          severity={toast.severity}
+          elevation={6} 
+          variant="filled"
+        >
+          {toast.message}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 }

@@ -71,48 +71,22 @@ const menuStyles = {
 function ManagementPage() {
   const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState('');
-  const [expanded, setExpanded] = useState(['documents', 'chats']);
+  const [expanded, setExpanded] = useState(['documents']);
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const theme = useTheme();
   const user = JSON.parse(localStorage.getItem('user'));
 
   useEffect(() => {
-    console.log('ManagementPage mounted', { user, isLoading, error });
-    
     if (!user) {
       console.log('No user found, redirecting to home');
       navigate('/');
-      return;
     }
-
-    const checkServer = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        // Try to fetch initial data
-        const response = await fetch(`${import.meta.env.VITE_API_HOST}/embedding/docs?page=1&page_size=1`);
-        if (!response.ok) {
-          throw new Error('Server connection failed');
-        }
-        setIsLoading(false);
-      } catch (err) {
-        console.error('Server check failed:', err);
-        setError('Unable to connect to server. Please try again later.');
-        setIsLoading(false);
-      }
-    };
-    checkServer();
   }, [user, navigate]);
-
-  console.log('ManagementPage render', { selectedNode, expanded, isLoading, error });
-
-  if (!user) {
-    return null;
-  }
 
   const handleNodeSelect = (nodeId) => {
     setSelectedNode(nodeId);
+    setError(null);
   };
 
   const toggleExpand = (itemId) => {

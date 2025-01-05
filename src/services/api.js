@@ -45,13 +45,75 @@ export const getCurrentUser = () => {
 
 export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
   try {
+    const { dateRange, ...otherFilters } = filters;
+    
+    // Handle date range conversion from local to UTC
+    let fromDate, toDate;
+    if (dateRange?.start) {
+      fromDate = new Date(dateRange.start);
+      fromDate.setHours(0, 0, 0, 0);
+    }
+    
+    if (dateRange?.end) {
+      toDate = new Date(dateRange.end);
+      toDate.setDate(toDate.getDate() + 1);
+      toDate.setHours(0, 0, 0, 0);
+      toDate = new Date(toDate.getTime() - 1);
+    }
+
+    // Create params object with correct parameter names
     const params = {
       page,
-      page_size: pageSize,
-      ...filters
+      page_size: pageSize
     };
-    const response = await api.get('/embedding/docs', { params });
-    return response.data;
+
+    // Only add filters if they have valid values
+    if (otherFilters.source?.trim()) {
+      params.source = otherFilters.source;
+    }
+
+    if (otherFilters.sourceType && otherFilters.sourceType !== 'all') {
+      params.source_type = otherFilters.sourceType;
+    }
+
+    if (otherFilters.status && otherFilters.status !== 'all') {
+      params.status = otherFilters.status;
+    }
+
+    if (otherFilters.createdBy?.trim()) {
+      params.created_by = otherFilters.createdBy;
+    }
+
+    // Always add date range if present
+    if (dateRange?.start) {
+      params.from_date = fromDate.toISOString();
+    }
+
+    if (dateRange?.end) {
+      params.to_date = toDate.toISOString();
+    }
+
+    console.log('Request params:', params); // Add logging to debug
+
+    const user = getCurrentUser();
+    const response = await api.get('/embedding/docs', { 
+      params,
+      headers: {
+        'X-User-Id': user.id
+      }
+    });
+
+    // Transform UTC dates to local timezone in the response
+    const transformedData = response.data.map(doc => ({
+      ...doc,
+      created_at: new Date(doc.created_at).toLocaleString(),
+      modified_at: new Date(doc.modified_at).toLocaleString()
+    }));
+
+    return {
+      items: transformedData,
+      total: response.data.length
+    };
   } catch (error) {
     console.error('Error fetching document logs:', error);
     throw error;
@@ -111,7 +173,7 @@ export const uploadDocument = async (file, sourceType, userId) => {
   const response = await api.post('/embedding/docs/upload', formData, {
     params: { source_type: sourceType },
     headers: {
-      'user-id': userId,
+      'X-User-Id': userId,
       'Content-Type': 'multipart/form-data'
     }
   });
@@ -119,7 +181,12 @@ export const uploadDocument = async (file, sourceType, userId) => {
 };
 
 export const deleteDocumentIndexLog = async (logId) => {
-  await api.delete(`/embedding/docs/${logId}`);
+  const user = getCurrentUser();
+  await api.delete(`/embedding/docs/${logId}`, {
+    headers: {
+      'X-User-Id': user.id
+    }
+  });
   return { success: true };
 };
 
