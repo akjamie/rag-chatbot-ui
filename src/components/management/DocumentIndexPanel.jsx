@@ -67,6 +67,21 @@ function FilterLabel({ label, tooltip }) {
 function Row({ row, onDelete }) {
   const [open, setOpen] = useState(false);
 
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'PENDING':
+        return '#ffa726'; // Orange
+      case 'IN_PROGRESS':
+        return '#2196f3'; // Blue
+      case 'FAILED':
+        return '#f44336'; // Red
+      case 'COMPLETED':
+        return '#4caf50'; // Green
+      default:
+        return 'inherit';
+    }
+  };
+
   return (
     <>
       <TableRow hover>
@@ -77,7 +92,24 @@ function Row({ row, onDelete }) {
         </TableCell>
         <TableCell>{row.source}</TableCell>
         <TableCell>{row.source_type}</TableCell>
-        <TableCell>{row.status}</TableCell>
+        <TableCell>
+          <Box
+            sx={{
+              display: 'inline-block',
+              bgcolor: `${getStatusColor(row.status)}20`,
+              color: getStatusColor(row.status),
+              border: 1,
+              borderColor: getStatusColor(row.status),
+              borderRadius: 1,
+              px: 1,
+              py: 0.5,
+              fontSize: '0.875rem'
+            }}
+          >
+            {row.status === 'IN_PROGRESS' ? 'In Progress' : 
+             row.status.charAt(0) + row.status.slice(1).toLowerCase()}
+          </Box>
+        </TableCell>
         <TableCell>{row.created_at}</TableCell>
         <TableCell>{row.created_by}</TableCell>
         <TableCell>{row.modified_at}</TableCell>
@@ -162,9 +194,17 @@ function DocumentIndexPanel({ user }) {
     message: '',
     severity: 'success'
   });
+  const [uploadCategory, setUploadCategory] = useState('file');
 
   const loadDocuments = async () => {
     try {
+      if (!user) {
+        setError('Please log in to view documents');
+        setDocuments([]);
+        setTotal(0);
+        return;
+      }
+
       if (!hasValidFilters(filters)) {
         setError('Please specify at least one filter criteria');
         setDocuments([]);
@@ -241,20 +281,30 @@ function DocumentIndexPanel({ user }) {
 
   const handleUpload = async () => {
     try {
-      if (uploadType === 'url') {
-        if (!urlInput) return;
-        await uploadDocument(urlInput, 'web_page', user.id);
-      } else {
+      if (uploadCategory === 'file') {
         if (!selectedFile || !selectedSourceType) return;
-        await uploadDocument(selectedFile, selectedSourceType, user.id);
+        await uploadDocument(selectedFile, 'file', selectedSourceType, null, user.id);
+      } else {
+        if (!urlInput) return;
+        await uploadDocument(null, uploadCategory, null, urlInput, user.id);
       }
+      
+      setToast({
+        open: true,
+        message: 'Document uploaded successfully',
+        severity: 'success'
+      });
       setUploadDialog(false);
       setSelectedFile(null);
       setUrlInput('');
       loadDocuments();
     } catch (error) {
       console.error('Error uploading document:', error);
-      setError('Failed to upload document');
+      setToast({
+        open: true,
+        message: 'Failed to upload document',
+        severity: 'error'
+      });
     }
   };
 
@@ -321,7 +371,7 @@ function DocumentIndexPanel({ user }) {
                 { value: 'json', label: 'JSON' },
                 { value: 'docx', label: 'DOCX' },
                 { value: 'web_page', label: 'Web Page' },
-                { value: 'image', label: 'Image' }
+                { value: 'confluence', label: 'Confluence' }
               ]
             },
             {
@@ -331,10 +381,10 @@ function DocumentIndexPanel({ user }) {
               width: 2,
               options: [
                 { value: 'all', label: 'All Status' },
-                { value: 'completed', label: 'Completed' },
-                { value: 'processing', label: 'Processing' },
-                { value: 'failed', label: 'Failed' },
-                { value: 'new', label: 'New' }
+                { value: 'PENDING', label: 'Pending' },
+                { value: 'IN_PROGRESS', label: 'In Progress' },
+                { value: 'FAILED', label: 'Failed' },
+                { value: 'COMPLETED', label: 'Completed' }
               ]
             },
             {
@@ -357,7 +407,7 @@ function DocumentIndexPanel({ user }) {
           variant="contained"
           startIcon={<UploadIcon />}
           onClick={() => setUploadDialog(true)}
-          disabled={isLoading}
+          disabled={isLoading || !user}
           sx={{ 
             backgroundColor: '#ff1e1e !important',
             '&:hover': {
@@ -447,46 +497,61 @@ function DocumentIndexPanel({ user }) {
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <FormControl fullWidth>
-              <InputLabel>Source Type</InputLabel>
+              <InputLabel>Category</InputLabel>
               <Select
-                value={selectedSourceType}
+                value={uploadCategory}
                 onChange={(e) => {
-                  setSelectedSourceType(e.target.value);
-                  setUploadType(e.target.value === 'web_page' ? 'url' : 'file');
+                  setUploadCategory(e.target.value);
+                  setSelectedFile(null);
+                  setUrlInput('');
                 }}
-                label="Source Type"
+                label="Category"
               >
-                <MenuItem value="pdf">PDF</MenuItem>
-                <MenuItem value="csv">CSV</MenuItem>
-                <MenuItem value="text">Text</MenuItem>
-                <MenuItem value="json">JSON</MenuItem>
-                <MenuItem value="docx">DOCX</MenuItem>
+                <MenuItem value="file">File Upload</MenuItem>
                 <MenuItem value="web_page">Web Page</MenuItem>
-                <MenuItem value="image">Image</MenuItem>
+                <MenuItem value="confluence">Confluence</MenuItem>
               </Select>
             </FormControl>
 
-            {uploadType === 'url' ? (
+            {uploadCategory === 'file' && (
+              <>
+                <FormControl fullWidth>
+                  <InputLabel>Source Type</InputLabel>
+                  <Select
+                    value={selectedSourceType}
+                    onChange={(e) => setSelectedSourceType(e.target.value)}
+                    label="Source Type"
+                  >
+                    <MenuItem value="csv">CSV</MenuItem>
+                    <MenuItem value="pdf">PDF</MenuItem>
+                    <MenuItem value="text">Text</MenuItem>
+                    <MenuItem value="json">JSON</MenuItem>
+                    <MenuItem value="docx">DOCX</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <input
+                  type="file"
+                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                  accept={
+                    selectedSourceType === 'pdf' ? '.pdf' :
+                    selectedSourceType === 'csv' ? '.csv' :
+                    selectedSourceType === 'text' ? '.txt' :
+                    selectedSourceType === 'json' ? '.json' :
+                    selectedSourceType === 'docx' ? '.docx' :
+                    undefined
+                  }
+                />
+              </>
+            )}
+
+            {(uploadCategory === 'web_page' || uploadCategory === 'confluence') && (
               <TextField
                 fullWidth
-                label="URL"
+                label={uploadCategory === 'web_page' ? "URL" : "Confluence URL"}
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="Enter webpage URL"
-              />
-            ) : (
-              <input
-                type="file"
-                onChange={(e) => setSelectedFile(e.target.files[0])}
-                accept={
-                  selectedSourceType === 'pdf' ? '.pdf' :
-                  selectedSourceType === 'csv' ? '.csv' :
-                  selectedSourceType === 'text' ? '.txt' :
-                  selectedSourceType === 'json' ? '.json' :
-                  selectedSourceType === 'docx' ? '.docx' :
-                  selectedSourceType === 'image' ? '.jpg,.jpeg,.png' :
-                  undefined
-                }
+                placeholder={`Enter ${uploadCategory === 'web_page' ? 'webpage' : 'confluence'} URL`}
               />
             )}
           </Box>
@@ -496,7 +561,10 @@ function DocumentIndexPanel({ user }) {
           <Button 
             onClick={handleUpload}
             variant="contained"
-            disabled={uploadType === 'url' ? !urlInput : !selectedFile}
+            disabled={
+              uploadCategory === 'file' ? !selectedFile :
+              !urlInput
+            }
             sx={{ 
               backgroundColor: '#ff1e1e !important',
               '&:hover': {

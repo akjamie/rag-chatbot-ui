@@ -38,13 +38,21 @@ api.interceptors.response.use((response) => {
 export const getCurrentUser = () => {
   const userStr = localStorage.getItem('user');
   if (!userStr) {
-    throw new Error('User not authenticated');
+    return null;
   }
   return JSON.parse(userStr);
 };
 
 export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
   try {
+    const user = getCurrentUser();
+    if (!user) {
+      return {
+        items: [],
+        total: 0
+      };
+    }
+
     const { dateRange, ...otherFilters } = filters;
     
     // Handle date range conversion from local to UTC
@@ -95,7 +103,6 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
 
     console.log('Request params:', params); // Add logging to debug
 
-    const user = getCurrentUser();
     const response = await api.get('/embedding/docs', { 
       params,
       headers: {
@@ -166,12 +173,17 @@ export const sendChatQuery = async (userInput, headers = {}) => {
   }
 };
 
-export const uploadDocument = async (file, sourceType, userId) => {
+export const uploadDocument = async (file, category, sourceType, url, userId) => {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('category', category);
+  
+  if (category === 'file' && file) {
+    formData.append('file', file);
+  } else if ((category === 'web_page' || category === 'confluence') && url) {
+    formData.append('url', url);
+  }
   
   const response = await api.post('/embedding/docs/upload', formData, {
-    params: { source_type: sourceType },
     headers: {
       'X-User-Id': userId,
       'Content-Type': 'multipart/form-data'
