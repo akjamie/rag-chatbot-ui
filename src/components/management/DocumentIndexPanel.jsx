@@ -195,6 +195,7 @@ function DocumentIndexPanel({ user }) {
     severity: 'success'
   });
   const [uploadCategory, setUploadCategory] = useState('file');
+  const [uploading, setUploading] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -281,30 +282,34 @@ function DocumentIndexPanel({ user }) {
 
   const handleUpload = async () => {
     try {
-      if (uploadCategory === 'file') {
-        if (!selectedFile || !selectedSourceType) return;
-        await uploadDocument(selectedFile, 'file', selectedSourceType, null, user.id);
-      } else {
-        if (!urlInput) return;
-        await uploadDocument(null, uploadCategory, null, urlInput, user.id);
-      }
+      setUploading(true);
       
+      const response = await uploadDocument(
+        selectedFile,
+        uploadCategory,
+        selectedSourceType,
+        urlInput,
+        user.id
+      );
+
+      setUploadDialog(false);
+      setSelectedFile(null);
+      setUrlInput('');
       setToast({
         open: true,
         message: 'Document uploaded successfully',
         severity: 'success'
       });
-      setUploadDialog(false);
-      setSelectedFile(null);
-      setUrlInput('');
       loadDocuments();
     } catch (error) {
       console.error('Error uploading document:', error);
       setToast({
         open: true,
-        message: 'Failed to upload document',
+        message: 'Failed to upload document: ' + (error.response?.data?.detail || error.message),
         severity: 'error'
       });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -557,13 +562,17 @@ function DocumentIndexPanel({ user }) {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUploadDialog(false)}>Cancel</Button>
-          <Button 
+          <Button onClick={() => setUploadDialog(false)} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button
             onClick={handleUpload}
             variant="contained"
             disabled={
-              uploadCategory === 'file' ? !selectedFile :
-              !urlInput
+              uploading || (
+                uploadCategory === 'file' ? !selectedFile :
+                !urlInput
+              )
             }
             sx={{ 
               backgroundColor: '#ff1e1e !important',
@@ -572,10 +581,28 @@ function DocumentIndexPanel({ user }) {
               }
             }}
           >
-            Upload
+            {uploading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} color="inherit" />
+                <span>Uploading...</span>
+              </Box>
+            ) : (
+              'Upload'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Backdrop
+        sx={{ 
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          position: 'absolute'
+        }}
+        open={uploading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
 
       <Dialog
         open={deleteDialog.open}

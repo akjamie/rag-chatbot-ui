@@ -136,10 +136,21 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     }
   };
 
-  const handleSend = async (questionText = input.trim()) => {
-    if (!questionText || !user?.id || isLoading) return;
+  const handleSend = async () => {
+    if (!input.trim()) return;
 
-    setInput('');
+    const userMessage = input;
+    setInput(''); // Clear input immediately
+
+    // Add user message immediately to the chat
+    setMessages(prev => [...prev, {
+      user_input: userMessage,
+      response: null,  // Initially no response
+      request_id: null,
+      session_id: currentSession?.session_id
+    }]);
+
+    // Show loading state
     setIsLoading(true);
 
     try {
@@ -151,66 +162,38 @@ function ChatArea({ selectedChat, onNewSession, user }) {
         headers['X-Session-Id'] = currentSession.session_id;
       }
 
-      const response = await sendChatQuery(questionText, headers);
+      const response = await sendChatQuery(userMessage, headers);
       
-      // Try to get session ID from multiple sources
-      const responseSessionId = 
-        response.headers?.['x-session-id'] || 
-        response.headers?.['X-Session-Id'] ||
-        response.config?.headers?.['x-session-id'] ||
-        response.request?.getResponseHeader?.('X-Session-Id');
-
-      console.log('Response details:', {
-        headers: response.headers,
-        configHeaders: response.config.headers,
-        customHeaders: response.customHeaders,
-        sessionId: responseSessionId
-      });
-
-      if (!currentSession?.session_id && responseSessionId) {
+      if (response.customHeaders?.['X-Session-Id'] && !currentSession) {
         const newSession = {
-          session_id: responseSessionId,
-          user_id: user.id
+          session_id: response.customHeaders['X-Session-Id']
         };
         setCurrentSession(newSession);
-        
-        onNewSession({
-          session_id: responseSessionId,
-          user_id: user.id,
-          title: questionText
-        });
+        onNewSession?.(newSession);
       }
 
-      // Add message to UI immediately
-      const newMessage = {
-        user_input: questionText,
-        response: null,
-        request_id: null,
-        session_id: currentSession?.session_id
-      };
-      setMessages(prev => [...prev, newMessage]);
-
-      // Update message with response
+      // Update the message with the response
       setMessages(prev => prev.map(msg => 
-        msg.user_input === questionText && !msg.response
+        msg.user_input === userMessage && !msg.response
           ? {
               ...msg,
-              response: response.data.data?.answer || response.data.answer,
-              request_id: response.headers['X-Request-Id'],
-              session_id: currentSession?.session_id || responseSessionId,
-              suggested_questions: response.data.data?.suggested_questions || response.data.suggested_questions || [],
-              citations: response.data.data?.citations || response.data.citations || [],
-              output_format: response.data.data?.metadata?.output_format || response.data.metadata?.output_format || 'text'
+              response: response.data.data.answer,
+              request_id: response.customHeaders?.['X-Request-Id'],
+              session_id: currentSession?.session_id || response.customHeaders?.['X-Session-Id'],
+              suggested_questions: response.data.data.suggested_questions || [],
+              citations: response.data.data.citations || [],
+              output_format: response.data.data.metadata?.output_format || 'text'
             }
           : msg
       ));
 
     } catch (error) {
-      console.error('Error sending chat query:', error);
-      setMessages(prev => prev.filter(msg => msg.user_input !== questionText));
+      console.error('Error sending message:', error);
+      // Remove the user message if there was an error
+      setMessages(prev => prev.filter(msg => msg.user_input !== userMessage));
       setToast({
         open: true,
-        message: 'Failed to send message: ' + (error.response?.data?.detail?.[0]?.msg || error.message),
+        message: 'Failed to send message. Please try again.',
         severity: 'error'
       });
     } finally {
