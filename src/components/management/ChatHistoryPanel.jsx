@@ -14,7 +14,9 @@ import {
   Button,
   Grid,
   IconButton,
-  Tooltip
+  Tooltip,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
@@ -29,6 +31,11 @@ function ChatHistoryPanel() {
   const [searchedUserId, setSearchedUserId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [toast, setToast] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   const loadChatHistories = async (uid) => {
     if (!uid?.trim()) return;
@@ -59,12 +66,25 @@ function ChatHistoryPanel() {
     
     try {
       await deleteChatHistory(sessionId);
-      // Reload the list after deletion
+      setToast({
+        open: true,
+        message: 'Chat session deleted successfully',
+        severity: 'success'
+      });
       loadChatHistories(searchedUserId);
     } catch (error) {
       console.error('Error deleting chat session:', error);
-      setError(error.message || 'Failed to delete chat session');
+      setToast({
+        open: true,
+        message: 'Failed to delete chat session: ' + (error.response?.data?.detail || error.message),
+        severity: 'error'
+      });
     }
+  };
+
+  const handleCloseToast = (event, reason) => {
+    if (reason === 'clickaway') return;
+    setToast(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -90,6 +110,16 @@ function ChatHistoryPanel() {
               startIcon={<SearchIcon />}
               disabled={!userId.trim() || isLoading}
               fullWidth
+              sx={{
+                backgroundColor: '#ff1e1e !important',
+                '&:hover': {
+                  backgroundColor: '#e01919 !important'
+                },
+                '&.Mui-disabled': {
+                  backgroundColor: 'grey.300 !important',
+                  color: 'grey.500 !important'
+                }
+              }}
             >
               Search
             </Button>
@@ -159,6 +189,26 @@ function ChatHistoryPanel() {
           />
         </Paper>
       )}
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseToast}
+          severity={toast.severity}
+          variant="filled"
+          elevation={6}
+          sx={{
+            width: '100%',
+            minWidth: '300px'
+          }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -1,25 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
-  Box, TextField, IconButton, Paper, Avatar, Typography,
-  Button, Snackbar, Alert, TableContainer, Table, TableHead, TableBody, TableRow, TableCell
-} from '@mui/material';
+import {useEffect, useRef, useState} from 'react';
+import {Alert, Avatar, Box, Button, IconButton, Paper, Snackbar, TextField, Typography} from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
-import MicIcon from '@mui/icons-material/Mic';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
-import ImageIcon from '@mui/icons-material/Image';
-import ClearIcon from '@mui/icons-material/Clear';
 import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
 import ThumbDownAltIcon from '@mui/icons-material/ThumbDownAlt';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  getChatHistory, 
-  sendChatQuery, 
-  updateMessageLike
-} from '../services/api';
-import LoadingMessage from './LoadingMessage';
-import { alpha } from '@mui/material/styles';
+import {getChatHistory, sendChatQuery, updateMessageLike} from '../services/api';
+import {keyframes, styled} from '@mui/material/styles';
 import UserAvatar from './UserAvatar';
+import RefreshIcon from '@mui/icons-material/Refresh';
+
+const typingAnimation = keyframes`
+  0% { opacity: .2; }
+  20% { opacity: 1; }
+  100% { opacity: .2; }
+`;
+
+// Create a styled wrapper component instead
+const StyledChatArea = styled(Box)(({ theme }) => ({
+  '& .typing-dot': {
+    animation: `${typingAnimation} 1.4s infinite`,
+    '&:nth-of-type(2)': {
+      animationDelay: '.2s',
+    },
+    '&:nth-of-type(3)': {
+      animationDelay: '.4s',
+    }
+  }
+}));
 
 function ChatArea({ selectedChat, onNewSession, user }) {
   const [messages, setMessages] = useState([]);
@@ -136,66 +144,84 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (retryMessage) => {
+    if (!retryMessage && !input.trim()) return;
 
-    const userMessage = input;
-    setInput(''); // Clear input immediately
+    const userMessage = retryMessage || input;
+    if (!retryMessage) {
+      setInput('');
+    }
 
-    // Add user message immediately to the chat
-    setMessages(prev => [...prev, {
+    // Add user message immediately
+    const newMessage = {
       user_input: userMessage,
-      response: null,  // Initially no response
+      response: null,
       request_id: null,
       session_id: currentSession?.session_id
-    }]);
+    };
 
-    // Show loading state
+    // For retry, update existing message, otherwise add new one
+    if (retryMessage) {
+      setMessages(prev => prev.map(msg => 
+        msg.user_input === userMessage
+          ? { ...msg, response: null, httpStatus: null }
+          : msg
+      ));
+    } else {
+      setMessages(prev => [...prev, newMessage]);
+    }
+
     setIsLoading(true);
 
     try {
       const headers = {
-        'X-User-Id': user.id
+        'X-User-Id': user.id,
+        'X-Session-Id': currentSession?.session_id || ''
       };
-
-      if (currentSession?.session_id) {
-        headers['X-Session-Id'] = currentSession.session_id;
-      }
 
       const response = await sendChatQuery(userMessage, headers);
       
-      if (response.customHeaders?.['X-Session-Id'] && !currentSession) {
-        const newSession = {
-          session_id: response.customHeaders['X-Session-Id']
-        };
-        setCurrentSession(newSession);
-        onNewSession?.(newSession);
-      }
-
-      // Update the message with the response
+      console.log('Updating message with success response:', {
+        userMessage,
+        response: response.data.data.answer,
+        httpStatus: response.status
+      });
+      
       setMessages(prev => prev.map(msg => 
-        msg.user_input === userMessage && !msg.response
+        msg.user_input === userMessage
           ? {
               ...msg,
               response: response.data.data.answer,
-              request_id: response.customHeaders?.['X-Request-Id'],
-              session_id: currentSession?.session_id || response.customHeaders?.['X-Session-Id'],
+              httpStatus: response.status || 200,
               suggested_questions: response.data.data.suggested_questions || [],
               citations: response.data.data.citations || [],
-              output_format: response.data.data.metadata?.output_format || 'text'
             }
           : msg
       ));
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      // Remove the user message if there was an error
-      setMessages(prev => prev.filter(msg => msg.user_input !== userMessage));
-      setToast({
-        open: true,
-        message: 'Failed to send message. Please try again.',
-        severity: 'error'
+      console.error('Error details:', {
+        error,
+        status: error.response?.status,
+        message: error.message
       });
+      
+      // Get proper error status and message
+      const httpStatus = error.response?.status || 500;
+      const errorMessage = error.response?.data?.detail || error.message || 'Request failed';
+
+      // Update message with error details
+      console.log('Update error message to UI:', errorMessage);
+      setMessages(prev => prev.map(msg =>
+        msg.user_input === userMessage
+          ? {
+              ...msg,
+              response: errorMessage,
+              httpStatus: httpStatus,
+              error: true // Explicit error flag
+            }
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }
@@ -266,190 +292,119 @@ function ChatArea({ selectedChat, onNewSession, user }) {
   };
 
   const renderResponse = (message) => {
+    console.log('renderResponse called with:', message);
+    if (!message.response) return null;
+
+    const isError = message.error || message.httpStatus >= 400;
+    console.log('Message status:', { isError, httpStatus: message.httpStatus });
+
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        alignItems: 'flex-end',
-        mt: 2
-      }}>
+      <Box sx={{ display: 'flex', mb: 2 }}>
         <Box sx={{ 
           display: 'flex',
           alignItems: 'flex-start',
           gap: 2,
-          width: '100%',
-          justifyContent: 'flex-end'
+          maxWidth: '80%'
         }}>
-          <Box sx={{ 
-            bgcolor: 'background.message.ai',
-            p: 2.5,
-            borderRadius: 2,
-            maxWidth: '80%'
-          }}>
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
-              components={{
-                // Basic text elements
-                p: ({node, ...props}) => <Typography {...props} paragraph />,
-                h1: ({node, ...props}) => <Typography variant="h4" {...props} gutterBottom />,
-                h2: ({node, ...props}) => <Typography variant="h5" {...props} gutterBottom />,
-                h3: ({node, ...props}) => <Typography variant="h6" {...props} gutterBottom />,
-                
-                // Code blocks
-                pre: ({node, ...props}) => (
-                  <Box sx={{ 
-                    bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.05) : '#f5f5f5',
-                    p: 2,
-                    borderRadius: 1,
-                    overflow: 'auto',
-                    my: 2
-                  }}>
-                    <pre style={{ margin: 0 }} {...props} />
-                  </Box>
-                ),
-                code: ({node, inline, ...props}) => (
-                  inline ? 
-                    <Typography 
-                      component="code"
-                      sx={{ 
-                        bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.1) : '#f5f5f5',
-                        px: 0.5,
-                        py: 0.25,
-                        borderRadius: 0.5,
-                        fontFamily: 'monospace'
-                      }}
-                      {...props} 
-                    /> :
-                    <code style={{ fontFamily: 'monospace' }} {...props} />
-                ),
-
-                // Lists
-                ul: ({node, ...props}) => (
-                  <Box component="ul" sx={{ pl: 2, my: 1 }} {...props} />
-                ),
-                ol: ({node, ...props}) => (
-                  <Box component="ol" sx={{ pl: 2, my: 1 }} {...props} />
-                ),
-                li: ({node, ...props}) => (
-                  <Box component="li" sx={{ my: 0.5 }} {...props} />
-                ),
-
-                // Tables
-                table: ({node, ...props}) => (
-                  <TableContainer component={Paper} sx={{ my: 2 }}>
-                    <Table size="small" {...props} />
-                  </TableContainer>
-                ),
-                thead: ({node, ...props}) => <TableHead {...props} />,
-                tbody: ({node, ...props}) => <TableBody {...props} />,
-                tr: ({node, ...props}) => <TableRow {...props} />,
-                td: ({node, ...props}) => (
-                  <TableCell 
-                    {...props}
-                    sx={{ 
-                      borderBottom: '1px solid',
-                      borderColor: 'divider'
-                    }} 
-                  />
-                ),
-                th: ({node, ...props}) => (
-                  <TableCell 
-                    component="th"
-                    {...props}
-                    sx={{ 
-                      fontWeight: 'bold',
-                      borderBottom: '2px solid',
-                      borderColor: 'divider',
-                      bgcolor: theme => theme.palette.mode === 'dark' ? alpha('#ffffff', 0.05) : '#f5f5f5'
-                    }} 
-                  />
-                ),
-              }}
-            >
-              {message.response}
-            </ReactMarkdown>
-
-            {/* Citations */}
-            {message.citations?.length > 0 && (
-              <Typography 
-                variant="caption"
-                sx={{ 
-                  mt: 2,
-                  display: 'block',
-                  color: 'text.secondary'
-                }}
-              >
-                Citations: {message.citations.join(', ')}
-              </Typography>
-            )}
-
-            {/* Like/Unlike buttons */}
-            <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-              <IconButton 
-                size="small"
-                onClick={() => handleLike(message.request_id, true)}
-                color={message.liked === true ? 'primary' : 'default'}
-              >
-                <ThumbUpAltIcon fontSize="small" />
-              </IconButton>
-              <IconButton 
-                size="small"
-                onClick={() => handleLike(message.request_id, false)}
-                color={message.liked === false ? 'primary' : 'default'}
-              >
-                <ThumbDownAltIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          </Box>
-          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-            AI
+          <Avatar 
+            sx={{ 
+              bgcolor: isError ? 'error.main' : theme => theme.palette.mode === 'dark' ? '#2d2d2d' : '#f8fafc',
+              color: isError ? '#fff' : theme => theme.palette.mode === 'dark' ? '#fff' : '#64748b',
+              width: 32,
+              height: 32,
+              border: 1,
+              borderColor: isError ? 'error.main' : theme => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
+            }}
+          >
+            {isError ? '!' : 'AI'}
           </Avatar>
-        </Box>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              bgcolor: isError
+                ? theme => theme.palette.mode === 'dark' 
+                  ? 'rgba(255, 0, 0, 0.1)' 
+                  : 'rgba(255, 0, 0, 0.05)'
+                : theme => theme.palette.mode === 'dark' 
+                  ? 'rgba(255, 255, 255, 0.03)' 
+                  : '#f8fafc',
+              borderRadius: 2
+            }}
+          >
+            {isError ? (
+              <Box>
+                <Box sx={{ 
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1
+                }}>
+                  <Typography 
+                    variant="body1" 
+                    color="error.main"
+                    sx={{ flex: 1 }}
+                  >
+                    {message.response}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => handleSend(message.user_input)}
+                    startIcon={<RefreshIcon fontSize="small" />}
+                    sx={{
+                      color: 'error.main',
+                      minWidth: 'auto',
+                      p: 0.5,
+                      '&:hover': {
+                        bgcolor: 'error.main',
+                        color: '#fff',
+                      }
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              // Success message content
+              <Box>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.response}
+                </ReactMarkdown>
 
-        {/* Suggested questions */}
-        {message.suggested_questions?.length > 0 && (
-          <Box sx={{ 
-            display: 'flex', 
-            gap: 1, 
-            flexWrap: 'wrap', 
-            ml: 7,
-            mb: 2,
-            maxWidth: '80%'
-          }}>
-            {message.suggested_questions.map((question, idx) => (
-              <Button 
-                key={idx}
-                variant="outlined"
-                size="small"
-                onClick={() => handleSuggestedQuestion(question)}
-                sx={{
-                  borderRadius: '12px',
-                  borderColor: theme => theme.palette.mode === 'dark' 
-                    ? 'rgba(255, 255, 255, 0.08)' 
-                    : 'rgba(0, 0, 0, 0.08)',
-                  color: 'text.secondary',
-                  bgcolor: theme => theme.palette.mode === 'dark' 
-                    ? 'rgba(255, 255, 255, 0.02)' 
-                    : 'rgba(0, 0, 0, 0.01)',
-                  '&:hover': {
-                    bgcolor: theme => theme.palette.mode === 'dark' 
-                      ? 'rgba(255, 255, 255, 0.05)' 
-                      : 'rgba(0, 0, 0, 0.03)',
-                    borderColor: 'primary.main'
-                  },
-                  textTransform: 'none',
-                  fontSize: '0.8125rem',
-                  py: 0.25,
-                  px: 1,
-                  minHeight: '24px',
-                  lineHeight: 1.2
-                }}
-              >
-                {question}
-              </Button>
-            ))}
-          </Box>
-        )}
+                {message.citations?.length > 0 && (
+                  <Typography 
+                    variant="caption"
+                    sx={{ 
+                      mt: 2,
+                      display: 'block',
+                      color: 'text.secondary'
+                    }}
+                  >
+                    Citations: {message.citations.join(', ')}
+                  </Typography>
+                )}
+
+                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                  <IconButton 
+                    size="small"
+                    onClick={() => handleLike(message.request_id, true)}
+                    color={message.liked === true ? 'primary' : 'default'}
+                  >
+                    <ThumbUpAltIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton 
+                    size="small"
+                    onClick={() => handleLike(message.request_id, false)}
+                    color={message.liked === false ? 'primary' : 'default'}
+                  >
+                    <ThumbDownAltIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Box>
+            )}
+          </Paper>
+        </Box>
       </Box>
     );
   };
@@ -490,8 +445,13 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     }
   };
 
+  // Add logging when messages state updates
+  useEffect(() => {
+    console.log('Messages updated:', messages);
+  }, [messages]);
+
   return (
-    <Box sx={{ 
+    <StyledChatArea sx={{ 
       display: 'flex', 
       flexDirection: 'column',
       height: '100%',
@@ -566,121 +526,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
             </Box>
 
             {/* AI Response */}
-            {message.response && (
-              <Box sx={{ 
-                display: 'flex',
-                mb: 2
-              }}>
-                <Box sx={{ 
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 2,
-                  maxWidth: '80%'
-                }}>
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: theme => theme.palette.mode === 'dark' ? '#2d2d2d' : '#f8fafc',
-                      color: theme => theme.palette.mode === 'dark' ? '#fff' : '#64748b',
-                      width: 32,
-                      height: 32,
-                      border: 1,
-                      borderColor: theme => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
-                    }}
-                  >
-                    AI
-                  </Avatar>
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      p: 2,
-                      bgcolor: theme => theme.palette.mode === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.03)' 
-                        : '#f8fafc',
-                      borderRadius: 2
-                    }}
-                  >
-                    <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        p: ({node, ...props}) => (
-                          <Typography 
-                            variant="body1" 
-                            sx={{                               
-                              my: 1,
-                              px: 1,  // Add horizontal padding
-                              '&:first-of-type': { mt: 0 },
-                              '&:last-child': { mb: 0 }
-                            }} 
-                            {...props} 
-                          />
-                        ),
-                        ul: ({node, ...props}) => (
-                          <Box 
-                            component="ul" 
-                            sx={{ 
-                              pl: 4,  // Increase left padding for lists
-                              my: 1,
-                              '& li': {
-                                pl: 1  // Add padding for list items
-                              }
-                            }} 
-                            {...props} 
-                          />
-                        ),
-                        ol: ({node, ...props}) => (
-                          <Box 
-                            component="ol" 
-                            sx={{ 
-                              pl: 4,  // Increase left padding for lists
-                              my: 1,
-                              '& li': {
-                                pl: 1  // Add padding for list items
-                              }
-                            }} 
-                            {...props} 
-                          />
-                        ),
-                        // ... other markdown components remain the same ...
-                      }}
-                    >
-                      {message.response}
-                    </ReactMarkdown>
-
-                    {/* Citations */}
-                    {message.citations?.length > 0 && (
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          mt: 2,
-                          display: 'block',
-                          color: 'text.secondary'
-                        }}
-                      >
-                        Citations: {message.citations.join(', ')}
-                      </Typography>
-                    )}
-
-                    {/* Like/Unlike buttons */}
-                    <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleLike(message.request_id, true)}
-                        color={message.liked === true ? 'primary' : 'default'}
-                      >
-                        <ThumbUpAltIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleLike(message.request_id, false)}
-                        color={message.liked === false ? 'primary' : 'default'}
-                      >
-                        <ThumbDownAltIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Paper>
-                </Box>
-              </Box>
-            )}
+            {message.response && renderResponse(message)}
 
             {/* Suggested Questions */}
             {message.suggested_questions?.length > 0 && (
@@ -728,15 +574,46 @@ function ChatArea({ selectedChat, onNewSession, user }) {
             )}
           </Box>
         ))}
+
+        {/* Show loading indicator after the last message */}
         {isLoading && (
-          <Box sx={{ 
-            display: 'flex',
-            mb: 2
-          }}>
-            <LoadingMessage />
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+            <Avatar 
+              sx={{ 
+                bgcolor: theme => theme.palette.mode === 'dark' ? '#2d2d2d' : '#f8fafc',
+                color: theme => theme.palette.mode === 'dark' ? '#fff' : '#64748b',
+                width: 32,
+                height: 32,
+                border: 1,
+                borderColor: theme => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
+              }}
+            >
+              AI
+            </Avatar>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                bgcolor: theme => theme.palette.mode === 'dark' 
+                  ? 'rgba(255, 255, 255, 0.03)' 
+                  : '#f8fafc',
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <Typography color="text.secondary">AI is thinking</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <span className="typing-dot">.</span>
+                <span className="typing-dot">.</span>
+                <span className="typing-dot">.</span>
+              </Box>
+            </Paper>
           </Box>
         )}
-        <div ref={messagesEndRef} style={{ height: 1 }} /> {/* Invisible element for scrolling */}
+
+        <div ref={messagesEndRef} style={{ height: 1 }} />
       </Box>
 
       <Box 
@@ -850,7 +727,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
           {toast.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </StyledChatArea>
   );
 }
 
