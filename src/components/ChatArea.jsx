@@ -409,6 +409,12 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                     size="small"
                     onClick={() => handleLike(message.request_id, true)}
                     color={message.liked === true ? 'primary' : 'default'}
+                    sx={{ 
+                      padding: '4px',  // Make button smaller
+                      '& .MuiSvgIcon-root': { 
+                        fontSize: '0.9rem'  // Make icon smaller
+                      }
+                    }}
                   >
                     <ThumbUpAltIcon fontSize="small" />
                   </IconButton>
@@ -416,6 +422,12 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                     size="small"
                     onClick={() => handleLike(message.request_id, false)}
                     color={message.liked === false ? 'primary' : 'default'}
+                    sx={{ 
+                      padding: '4px',  // Make button smaller
+                      '& .MuiSvgIcon-root': { 
+                        fontSize: '0.9rem'  // Make icon smaller
+                      }
+                    }}
                   >
                     <ThumbDownAltIcon fontSize="small" />
                   </IconButton>
@@ -505,7 +517,8 @@ function ChatArea({ selectedChat, onNewSession, user }) {
               sx={{
                 display: 'flex',
                 justifyContent: 'flex-start',
-                mb: 2
+                mb: 2,
+                ml: '40px'  // Add left margin to align with AI response
               }}
             >
               <Box sx={{ 
@@ -517,8 +530,9 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                 <UserAvatar 
                   name={user?.name || 'User'} 
                   sx={{ 
-                    width: 32,  // Match AI avatar size
-                    height: 32  // Match AI avatar size
+                    width: 32,
+                    height: 32,
+                    marginLeft: '-40px'  // Pull avatar back to maintain alignment
                   }} 
                 />
                 <Paper
@@ -739,7 +753,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
               padding: '4px 0'
             },
             '& .MuiAlert-action': {
-              padding: '0 8px'
+              padding: '0 0px'
             }
           }}
         >
