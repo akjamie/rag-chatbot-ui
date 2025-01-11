@@ -56,11 +56,10 @@ function ChatArea({ selectedChat, onNewSession, user }) {
   useEffect(() => {
     if (selectedChat === null) {
       console.log('Selected chat is null, clearing messages and input');
-      // For new chat, only clear messages and input
+      // For new chat, clear everything
       setMessages([]);
       setInput('');
       setCurrentSession(null);
-      // Do NOT reset currentSession here
     } else if (selectedChat?.session_id?.trim()) {
       // For existing chat, set everything
       setMessages([]);
@@ -152,23 +151,26 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       setInput('');
     }
 
-    // Add user message immediately
-    const newMessage = {
-      user_input: userMessage,
-      response: null,
-      request_id: null,
-      session_id: currentSession?.session_id
-    };
-
     // For retry, update existing message, otherwise add new one
     if (retryMessage) {
       setMessages(prev => prev.map(msg => 
         msg.user_input === userMessage
-          ? { ...msg, response: null, httpStatus: null }
+          ? { 
+              ...msg, 
+              response: null, 
+              httpStatus: null, 
+              error: false
+            }
           : msg
       ));
     } else {
-      setMessages(prev => [...prev, newMessage]);
+      setMessages(prev => [...prev, {
+        user_input: userMessage,
+        response: null,
+        request_id: null,
+        session_id: currentSession?.session_id,
+        error: false
+      }]);
     }
 
     setIsLoading(true);
@@ -181,44 +183,51 @@ function ChatArea({ selectedChat, onNewSession, user }) {
 
       const response = await sendChatQuery(userMessage, headers);
       
-      console.log('Updating message with success response:', {
-        userMessage,
-        response: response.data.data.answer,
-        httpStatus: response.status
-      });
+      // Extract session ID from response if this is a new chat
+      const sessionId = response.customHeaders?.['X-Session-Id'] || currentSession?.session_id;
       
+      // If this is a new chat (no current session), set up the new session
+      if (!currentSession?.session_id && sessionId) {
+        const newSession = {
+          session_id: sessionId,
+          user_id: user.id
+        };
+        setCurrentSession(newSession);
+        if (onNewSession) {
+          onNewSession(newSession);
+        }
+      }
+
+      // Update message with success response
       setMessages(prev => prev.map(msg => 
         msg.user_input === userMessage
           ? {
               ...msg,
               response: response.data.data.answer,
-              httpStatus: response.status || 200,
+              request_id: response.customHeaders?.['X-Request-Id'],
+              session_id: sessionId,
               suggested_questions: response.data.data.suggested_questions || [],
               citations: response.data.data.citations || [],
+              error: false,
+              httpStatus: response.status || 200
             }
           : msg
       ));
 
     } catch (error) {
-      console.error('Error details:', {
-        error,
-        status: error.response?.status,
-        message: error.message
-      });
-      
-      // Get proper error status and message
+      // Error handling remains the same
       const httpStatus = error.response?.status || 500;
       const errorMessage = error.response?.data?.detail || error.message || 'Request failed';
 
-      // Update message with error details
-      console.log('Update error message to UI:', errorMessage);
       setMessages(prev => prev.map(msg =>
         msg.user_input === userMessage
           ? {
               ...msg,
               response: errorMessage,
               httpStatus: httpStatus,
-              error: true // Explicit error flag
+              error: true,
+              suggested_questions: [],
+              citations: []
             }
           : msg
       ));
@@ -228,6 +237,16 @@ function ChatArea({ selectedChat, onNewSession, user }) {
   };
 
   const handleSuggestedQuestion = (question) => {
+    // Add the question as a user message first
+    setMessages(prev => [...prev, {
+      user_input: question,
+      response: null,
+      request_id: null,
+      session_id: currentSession?.session_id,
+      error: false
+    }]);
+    
+    // Then handle it like a new query
     handleSend(question);
   };
 
@@ -342,7 +361,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   <Typography 
                     variant="body1" 
                     color="error.main"
-                    sx={{ flex: 1 }}
+                    sx={{ flex: 1, paddingTop: 0 }}
                   >
                     {message.response}
                   </Typography>
