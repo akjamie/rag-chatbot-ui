@@ -361,7 +361,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   <Typography 
                     variant="body1" 
                     color="error.main"
-                    sx={{ flex: 1, paddingTop: 0 }}
+                    sx={{ flex: 1, paddingTop: 2 }}
                   >
                     {message.response}
                   </Typography>
@@ -549,7 +549,8 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   <Typography 
                     variant="body1" 
                     sx={{ 
-                      px: 1  // Add horizontal padding
+                      px: 1,  // Add horizontal padding
+                      pl: 0
                     }}
                   >
                     {message.user_input}
@@ -750,7 +751,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
             },
             '& .MuiAlert-message': {
               fontSize: '0.9375rem',
-              padding: '4px 0'
+              padding: '2px 0'
             },
             '& .MuiAlert-action': {
               padding: '0 0px'

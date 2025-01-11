@@ -246,10 +246,10 @@ function ChatHistory({ histories = [], onSelectChat, onDeleteHistory, currentSes
             },
             '& .MuiAlert-message': {
               fontSize: '0.9375rem',
-              padding: '4px 0'
+              padding: '2px 0'
             },
             '& .MuiAlert-action': {
-              padding: '0 8px'
+              padding: '0 0px'
             }
           }}
         >
