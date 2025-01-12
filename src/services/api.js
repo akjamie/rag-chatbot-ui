@@ -182,8 +182,18 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
   }
 };
 
-export const getChatHistories = async (userId) => {
+export const getChatHistories = async (userId = null) => {
   try {
+    // If userId is not provided, try to get it from localStorage
+    if (!userId) {
+      const user = JSON.parse(localStorage.getItem('user'));
+      userId = user?.id;
+    }
+
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
     const response = await chatApi.get(`/chat/histories/${userId}`);
     return response.data;
   } catch (error) {
@@ -194,7 +204,12 @@ export const getChatHistories = async (userId) => {
 
 export const getChatHistory = async (sessionId) => {
   try {
-    const response = await chatApi.get(`/chat/histories/${sessionId}`);
+    if (!sessionId?.trim()) {
+      throw new Error('Invalid session ID');
+    }
+
+    const user = getCurrentUser();
+    const response = await chatApi.get(`/chat/histories/${user.id}/${sessionId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting chat history:', error);
@@ -204,7 +219,8 @@ export const getChatHistory = async (sessionId) => {
 
 export const deleteChatHistory = async (sessionId) => {
   try {
-    const response = await chatApi.delete(`/chat/histories/${sessionId}`);
+    const user = getCurrentUser();
+    const response = await chatApi.delete(`/chat/histories/${user.id}/${sessionId}`);
     return response.data;
   } catch (error) {
     console.error('Error deleting chat history:', error);
@@ -212,11 +228,18 @@ export const deleteChatHistory = async (sessionId) => {
   }
 };
 
-export const sendChatQuery = async (message, headers = {}) => {
+export const sendChatQuery = async (userInput, headers = {}) => {
   try {
-    const response = await chatApi.post('/chat/query', {
-      message: message
-    }, { headers });
+    const response = await chatApi.post('/chat/completion', { user_input: userInput },
+        {
+          headers: {
+            ...headers,
+            // Request server to expose all headers
+            'Access-Control-Request-Headers': '*'
+          },
+          withCredentials: true
+        }
+    );
     return response;
   } catch (error) {
     console.error('Error sending chat query:', error);
@@ -255,9 +278,11 @@ export const deleteDocumentIndexLog = async (logId) => {
 
 export const updateMessageLike = async (sessionId, messageId, liked) => {
   try {
-    const response = await docLogApi.post(`/chat/messages/${sessionId}/${messageId}/like`, {
-      liked: liked
-    });
+    const user = getCurrentUser();
+    await chatApi().patch(
+        `/chat/histories/${user.id}/${sessionId}/${requestId}/like`,
+        { liked }
+    );
     return response.data;
   } catch (error) {
     console.error('Error updating message like:', error);
