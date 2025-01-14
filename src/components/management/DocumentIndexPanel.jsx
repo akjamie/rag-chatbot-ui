@@ -29,7 +29,8 @@ import {
   Backdrop,
   CircularProgress,
   Snackbar,
-  Alert as MuiAlert
+  Alert as MuiAlert,
+  Chip
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadIcon from '@mui/icons-material/Upload';
@@ -64,23 +65,8 @@ function FilterLabel({ label, tooltip }) {
   );
 }
 
-function Row({ row, onDelete }) {
+const Row = ({ row, onDelete }) => {
   const [open, setOpen] = useState(false);
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'PENDING':
-        return '#ffa726'; // Orange
-      case 'IN_PROGRESS':
-        return '#2196f3'; // Blue
-      case 'FAILED':
-        return '#f44336'; // Red
-      case 'COMPLETED':
-        return '#4caf50'; // Green
-      default:
-        return 'inherit';
-    }
-  };
 
   return (
     <>
@@ -90,36 +76,35 @@ function Row({ row, onDelete }) {
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
-        <TableCell>{row.source}</TableCell>
+        <TableCell>
+          <Tooltip title={`${row.source_type}: ${row.source}`} placement="top">
+            <Typography
+              sx={{
+                maxWidth: '400px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'block'
+              }}
+            >
+              {row.source}
+            </Typography>
+          </Tooltip>
+        </TableCell>
         <TableCell>{row.source_type}</TableCell>
         <TableCell>
-          <Box
-            sx={{
-              display: 'inline-block',
-              bgcolor: `${getStatusColor(row.status)}20`,
-              color: getStatusColor(row.status),
-              border: 1,
-              borderColor: getStatusColor(row.status),
-              borderRadius: 1,
-              px: 1,
-              py: 0.5,
-              fontSize: '0.875rem'
-            }}
-          >
-            {row.status === 'IN_PROGRESS' ? 'In Progress' : 
-             row.status.charAt(0) + row.status.slice(1).toLowerCase()}
-          </Box>
+          <Chip 
+            label={row.status} 
+            color={row.status === 'completed' ? 'success' : 'warning'}
+            size="small"
+          />
         </TableCell>
         <TableCell>{row.created_at}</TableCell>
         <TableCell>{row.created_by}</TableCell>
         <TableCell>{row.modified_at}</TableCell>
         <TableCell>{row.modified_by}</TableCell>
-        <TableCell>
-          <IconButton 
-            size="small" 
-            onClick={() => onDelete(row.id)}
-            color="error"
-          >
+        <TableCell align="right">
+          <IconButton onClick={() => onDelete(row.id)}>
             <DeleteIcon />
           </IconButton>
         </TableCell>
@@ -132,7 +117,7 @@ function Row({ row, onDelete }) {
                 Additional Information
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                ID: {row.id}
+                Document ID: {row.id}
               </Typography>
               {row.checksum && (
                 <Typography variant="body2" color="text.secondary">
@@ -150,7 +135,7 @@ function Row({ row, onDelete }) {
       </TableRow>
     </>
   );
-}
+};
 
 const hasValidFilters = (filters) => {
   return Boolean(
@@ -196,6 +181,7 @@ function DocumentIndexPanel({ user }) {
   });
   const [uploadCategory, setUploadCategory] = useState('file');
   const [uploading, setUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -253,6 +239,7 @@ function DocumentIndexPanel({ user }) {
 
   const handleDeleteConfirm = async () => {
     try {
+      setUploading(true);
       await deleteDocumentIndexLog(deleteDialog.documentId);
       setToast({
         open: true,
@@ -268,6 +255,7 @@ function DocumentIndexPanel({ user }) {
         severity: 'error'
       });
     } finally {
+      setUploading(false);
       setDeleteDialog({
         open: false,
         documentId: null
@@ -333,8 +321,27 @@ function DocumentIndexPanel({ user }) {
     }
   }, [page, rowsPerPage]);
 
+  const handleCloseDialog = () => {
+    if (!uploading) {
+      setDeleteDialog({ 
+        open: false, 
+        documentId: null 
+      });
+    }
+  };
+
   return (
-    <Box>
+    <Box sx={{ position: 'relative' }}>
+      <Backdrop
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1
+        }}
+        open={uploading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
+
       <Backdrop
         sx={{
           color: '#fff',
@@ -593,37 +600,45 @@ function DocumentIndexPanel({ user }) {
         </DialogActions>
       </Dialog>
 
-      <Backdrop
-        sx={{ 
-          color: '#fff',
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          position: 'absolute'
-        }}
-        open={uploading}
-      >
-        <CircularProgress color="inherit" />
-      </Backdrop>
-
       <Dialog
         open={deleteDialog.open}
-        onClose={() => setDeleteDialog({ open: false, documentId: null })}
+        onClose={handleCloseDialog}
+        aria-labelledby="delete-dialog-title"
+        PaperProps={{
+          sx: {
+            bgcolor: 'background.paper',
+            color: 'text.primary'
+          }
+        }}
       >
-        <DialogTitle>Confirm Deletion</DialogTitle>
+        <DialogTitle 
+          id="delete-dialog-title"
+          sx={{ color: 'text.primary' }}
+        >
+          Delete Document
+        </DialogTitle>
         <DialogContent>
-          Are you sure you want to delete this document? This action cannot be undone.
+          <Typography sx={{ color: 'text.primary' }}>
+            Are you sure you want to delete this document? This action cannot be undone.
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setDeleteDialog({ open: false, documentId: null })}
+            onClick={handleCloseDialog}
+            disabled={uploading}
+            sx={{ color: 'text.secondary' }}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleDeleteConfirm}
-            color="error"
+            color="error" 
             variant="contained"
+            disabled={uploading}
+            startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : null}
+            autoFocus
           >
-            Delete
+            {uploading ? 'Deleting Document...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

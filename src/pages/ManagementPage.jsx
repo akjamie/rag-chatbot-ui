@@ -11,7 +11,8 @@ import {
   ListItemText,
   Collapse,
   Alert,
-  CircularProgress
+  CircularProgress,
+  IconButton
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -20,6 +21,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ChatIcon from '@mui/icons-material/Chat';
 import DocumentIndexPanel from '../components/management/DocumentIndexPanel';
 import ChatHistoryPanel from '../components/management/ChatHistoryPanel';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 const DRAWER_WIDTH = 280;
 
@@ -76,6 +79,7 @@ function ManagementPage() {
   const [isLoading, setIsLoading] = useState(false);
   const theme = useTheme();
   const user = JSON.parse(localStorage.getItem('user'));
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!user) {
@@ -148,14 +152,16 @@ function ManagementPage() {
       <Drawer
         variant="permanent"
         sx={{
-          width: DRAWER_WIDTH,
+          width: sidebarOpen ? DRAWER_WIDTH : '0px',
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
+            width: sidebarOpen ? DRAWER_WIDTH : '0px',
             boxSizing: 'border-box',
             bgcolor: theme.palette.mode === 'dark' ? 'background.paper' : '#f8f8f8',
             borderRight: 1,
-            borderColor: 'divider'
+            borderColor: 'divider',
+            transition: 'width 0.3s ease',
+            overflow: 'hidden'
           },
         }}
       >
@@ -212,6 +218,32 @@ function ManagementPage() {
           ))}
         </List>
       </Drawer>
+
+      <IconButton
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        sx={{
+          position: 'fixed',
+          left: sidebarOpen ? DRAWER_WIDTH - 12 : -12,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          bgcolor: 'background.paper',
+          border: 1,
+          borderColor: 'divider',
+          transition: 'left 0.3s ease',
+          '&:hover': {
+            bgcolor: 'action.hover'
+          },
+          zIndex: theme.zIndex.drawer + 1,
+          padding: '4px',
+          width: '24px',
+          height: '24px',
+          '& .MuiSvgIcon-root': {
+            fontSize: '18px'
+          }
+        }}
+      >
+        {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+      </IconButton>
 
       <Box 
         component="main" 
