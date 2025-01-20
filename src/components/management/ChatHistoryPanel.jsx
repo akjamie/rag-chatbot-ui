@@ -142,7 +142,6 @@ function ChatHistoryPanel() {
                 <TableRow>
                   <TableCell>Session ID</TableCell>
                   <TableCell>Title</TableCell>
-                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -153,16 +152,6 @@ function ChatHistoryPanel() {
                   <TableRow key={session.session_id} hover>
                     <TableCell>{session.session_id}</TableCell>
                     <TableCell>{session.title}</TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Delete Session">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDelete(session.session_id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
                   </TableRow>
                 ))}
                 {chatSessions.length === 0 && (

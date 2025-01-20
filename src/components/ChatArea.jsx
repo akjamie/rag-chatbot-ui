@@ -52,17 +52,15 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     console.log('Current session updated:', currentSession);
   }, [currentSession]);
 
-  // Handle chat selection or new chat
+  // Watch for selectedChat changes or deletion
   useEffect(() => {
     if (selectedChat === null) {
-      console.log('Selected chat is null, clearing messages and input');
-      // For new chat, clear everything
+      // Clear messages when no chat is selected or chat is deleted
       setMessages([]);
       setInput('');
       setCurrentSession(null);
     } else if (selectedChat?.session_id?.trim()) {
-      // For existing chat, set everything
-      setMessages([]);
+      setMessages([]);  // Clear previous messages
       setInput('');
       setCurrentSession({
         session_id: selectedChat.session_id,
@@ -361,7 +359,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   <Typography 
                     variant="body1" 
                     color="error.main"
-                    sx={{ flex: 1, paddingTop: 2 }}
+                    sx={{ flex: 1, paddingTop: 0 }}
                   >
                     {message.response}
                   </Typography>
