@@ -147,24 +147,14 @@ function ChatHistory({ histories = [], onSelectChat, onDeleteHistory, currentSes
                   display: 'inline-flex'
                 }
               }}
-              secondaryAction={
-                <IconButton 
-                  edge="end" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteClick(e, history.session_id);
-                  }}
-                  sx={{ color: 'text.secondary' }}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              }
             >
               <ListItemText 
-                primary={history.title}
-                primaryTypographyProps={{
-                  noWrap: true,
-                  sx: { fontSize: '0.9rem' }
+                primary={history.title || 'New Chat'} 
+                sx={{
+                  '& .MuiListItemText-primary': {
+                    fontSize: '0.9375rem',
+                    fontWeight: currentSession?.session_id === history.session_id ? 500 : 400
+                  }
                 }}
               />
             </ListItem>

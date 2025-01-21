@@ -16,6 +16,7 @@ if (!DOC_LOG_API_HOST) {
 // Chat API instance
 const chatApi = axios.create({
   baseURL: CHAT_API_HOST,
+  timeout: 60000,  // Set timeout to 60 seconds
   headers: {
     'Content-Type': 'application/json'
   },
@@ -25,6 +26,7 @@ const chatApi = axios.create({
 // Log API instance
 const docLogApi = axios.create({
   baseURL: DOC_LOG_API_HOST,
+  timeout: 60000,  // Set timeout to 60 seconds
   headers: {
     'Content-Type': 'application/json'
   },
