@@ -249,23 +249,32 @@ export const sendChatQuery = async (userInput, headers = {}) => {
   }
 };
 
-export const uploadDocument = async (file, category, sourceType, url, userId) => {
-  const formData = new FormData();
-  formData.append('category', category);
-  
-  if (category === 'file' && file) {
-    formData.append('file', file);
-  } else if ((category === 'web_page' || category === 'confluence') && url) {
-    formData.append('url', url);
-  }
-  
-  const response = await docLogApi.post('/embedding/docs/upload', formData, {
-    headers: {
-      'X-User-Id': userId,
-      'Content-Type': 'multipart/form-data'
+export const uploadDocument = async (formData, userId) => {
+  try {
+    // Log FormData contents for debugging
+    console.log('FormData contents:');
+    for (let pair of formData.entries()) {
+      console.log(`${pair[0]}: ${typeof pair[1] === 'object' ? 'File/Blob' : pair[1]}`);
     }
-  });
-  return response.data;
+
+    const response = await docLogApi.post('/embedding/docs/upload', 
+      formData,
+      {
+        headers: {
+          'X-User-Id': userId,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Upload error:', error);
+    if (error.response?.data?.detail) {
+      throw new Error(error.response.data.detail);
+    }
+    throw error;
+  }
 };
 
 export const deleteDocumentIndexLog = async (logId) => {

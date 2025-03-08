@@ -164,8 +164,17 @@ function DocumentIndexPanel({ user }) {
     status: 'all',
     createdBy: '',
     dateRange: {
-      start: null,
-      end: null
+      start: (() => {
+        const date = new Date();
+        date.setDate(date.getDate() - 7);
+        date.setHours(0, 0, 0, 0);
+        return date;
+      })(),
+      end: (() => {
+        const date = new Date();
+        date.setHours(23, 59, 59, 999);
+        return date;
+      })()
     }
   });
   const [uploadType, setUploadType] = useState('file');
@@ -182,6 +191,15 @@ function DocumentIndexPanel({ user }) {
   const [uploadCategory, setUploadCategory] = useState('file');
   const [uploading, setUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [snippetTitle, setSnippetTitle] = useState('');
+  const [snippetContent, setSnippetContent] = useState('');
+
+  const VALID_CATEGORIES = {
+    file: 'file',
+    web_page: 'web_page',
+    confluence: 'confluence',
+    knowledge_snippet: 'knowledge_snippet'
+  };
 
   const loadDocuments = async () => {
     try {
@@ -272,17 +290,56 @@ function DocumentIndexPanel({ user }) {
     try {
       setUploading(true);
       
-      const response = await uploadDocument(
-        selectedFile,
-        uploadCategory,
-        selectedSourceType,
-        urlInput,
-        user.id
-      );
+      const formData = new FormData();
+
+      // For file uploads
+      if (uploadCategory === VALID_CATEGORIES.file) {
+        if (!selectedFile) {
+          throw new Error('Please select a file');
+        }
+        formData.append('file', selectedFile);
+        formData.append('category', 'file');
+        formData.append('source_type', selectedSourceType);
+      } 
+      // For web pages and confluence
+      else if (uploadCategory === VALID_CATEGORIES.web_page || uploadCategory === VALID_CATEGORIES.confluence) {
+        const url = urlInput.trim();
+        if (!url) {
+          throw new Error('Please enter a valid URL');
+        }
+        formData.append('url', url);
+        formData.append('category', uploadCategory);
+        formData.append('source_type', uploadCategory);
+      } 
+      // For knowledge snippets
+      else if (uploadCategory === VALID_CATEGORIES.knowledge_snippet) {
+        const content = snippetContent.trim();
+        if (!content) {
+          throw new Error('Please enter snippet content');
+        }
+        if (content.length > 2000) {
+          throw new Error('Content exceeds 2000 character limit');
+        }
+        formData.append('content', content);
+        formData.append('category', 'knowledge_snippet');
+        formData.append('source_type', 'knowledge_snippet');
+        
+        const title = snippetTitle.trim();
+        if (title) {
+          formData.append('title', title);
+        }
+      }
+
+      // Debug log
+      console.log('Uploading document with category:', uploadCategory);
+      for (let pair of formData.entries()) {
+        console.log(`${pair[0]}: ${typeof pair[1] === 'object' ? 'File/Blob' : pair[1]}`);
+      }
+      
+      const response = await uploadDocument(formData, user.id);
 
       setUploadDialog(false);
-      setSelectedFile(null);
-      setUrlInput('');
+      resetUploadForm();
       setToast({
         open: true,
         message: 'Document uploaded successfully',
@@ -293,12 +350,19 @@ function DocumentIndexPanel({ user }) {
       console.error('Error uploading document:', error);
       setToast({
         open: true,
-        message: 'Failed to upload document: ' + (error.response?.data?.detail || error.message),
+        message: error.message || 'Failed to upload document',
         severity: 'error'
       });
     } finally {
       setUploading(false);
     }
+  };
+
+  const resetUploadForm = () => {
+    setSelectedFile(null);
+    setUrlInput('');
+    setSnippetTitle('');
+    setSnippetContent('');
   };
 
   const handleSearch = () => {
@@ -499,8 +563,7 @@ function DocumentIndexPanel({ user }) {
         open={uploadDialog} 
         onClose={() => {
           setUploadDialog(false);
-          setSelectedFile(null);
-          setUrlInput('');
+          resetUploadForm();
         }}
         maxWidth="sm"
         fullWidth
@@ -516,16 +579,20 @@ function DocumentIndexPanel({ user }) {
                   setUploadCategory(e.target.value);
                   setSelectedFile(null);
                   setUrlInput('');
+                  setSnippetTitle('');
+                  setSnippetContent('');
                 }}
                 label="Category"
+                disabled={uploading}
               >
-                <MenuItem value="file">File Upload</MenuItem>
-                <MenuItem value="web_page">Web Page</MenuItem>
-                <MenuItem value="confluence">Confluence</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.file}>File Upload</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.web_page}>Web Page</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.confluence}>Confluence</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.knowledge_snippet}>Knowledge Snippet</MenuItem>
               </Select>
             </FormControl>
 
-            {uploadCategory === 'file' && (
+            {uploadCategory === VALID_CATEGORIES.file && (
               <>
                 <FormControl fullWidth>
                   <InputLabel>Source Type</InputLabel>
@@ -533,6 +600,7 @@ function DocumentIndexPanel({ user }) {
                     value={selectedSourceType}
                     onChange={(e) => setSelectedSourceType(e.target.value)}
                     label="Source Type"
+                    disabled={uploading}
                   >
                     <MenuItem value="csv">CSV</MenuItem>
                     <MenuItem value="pdf">PDF</MenuItem>
@@ -553,23 +621,79 @@ function DocumentIndexPanel({ user }) {
                     selectedSourceType === 'docx' ? '.docx' :
                     undefined
                   }
+                  disabled={uploading}
                 />
               </>
             )}
 
-            {(uploadCategory === 'web_page' || uploadCategory === 'confluence') && (
+            {(uploadCategory === VALID_CATEGORIES.web_page || uploadCategory === VALID_CATEGORIES.confluence) && (
               <TextField
                 fullWidth
-                label={uploadCategory === 'web_page' ? "URL" : "Confluence URL"}
+                label={uploadCategory === VALID_CATEGORIES.web_page ? "URL" : "Confluence URL"}
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder={`Enter ${uploadCategory === 'web_page' ? 'webpage' : 'confluence'} URL`}
+                placeholder={`Enter ${uploadCategory === VALID_CATEGORIES.web_page ? 'webpage' : 'confluence'} URL`}
+                disabled={uploading}
               />
+            )}
+
+            {uploadCategory === VALID_CATEGORIES.knowledge_snippet && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Title (Optional)"
+                  value={snippetTitle}
+                  onChange={(e) => setSnippetTitle(e.target.value)}
+                  placeholder="Enter a title for your knowledge snippet"
+                  disabled={uploading}
+                />
+                <Box sx={{ position: 'relative' }}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Content"
+                    multiline
+                    rows={6}
+                    value={snippetContent}
+                    onChange={(e) => {
+                      const newContent = e.target.value;
+                      if (newContent.length <= 2000) {
+                        setSnippetContent(newContent);
+                      }
+                    }}
+                    placeholder="Enter your knowledge snippet content"
+                    error={snippetContent.length > 2000 || !snippetContent.trim()}
+                    helperText={
+                      !snippetContent.trim() ? 'Content is required' :
+                      snippetContent.length > 2000 ? `${snippetContent.length}/2000 characters (exceeds limit)` :
+                      `${snippetContent.length}/2000 characters`
+                    }
+                    disabled={uploading}
+                  />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 14,
+                      color: snippetContent.length > 2000 ? 'error.main' : 'text.secondary'
+                    }}
+                  >
+                    {2000 - snippetContent.length} characters remaining
+                  </Typography>
+                </Box>
+              </>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUploadDialog(false)} disabled={uploading}>
+          <Button 
+            onClick={() => {
+              setUploadDialog(false);
+              resetUploadForm();
+            }} 
+            disabled={uploading}
+          >
             Cancel
           </Button>
           <Button
@@ -577,7 +701,8 @@ function DocumentIndexPanel({ user }) {
             variant="contained"
             disabled={
               uploading || (
-                uploadCategory === 'file' ? !selectedFile :
+                uploadCategory === VALID_CATEGORIES.file ? !selectedFile :
+                uploadCategory === VALID_CATEGORIES.knowledge_snippet ? (!snippetContent || snippetContent.length > 2000) :
                 !urlInput
               )
             }
