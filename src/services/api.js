@@ -168,7 +168,8 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
     });
 
     // Transform UTC dates to local timezone in the response
-    const transformedData = response.data.map(doc => ({
+    const items = Array.isArray(response.data) ? response.data : (response.data.items || []);
+    const transformedData = items.map(doc => ({
       ...doc,
       created_at: new Date(doc.created_at).toLocaleString(),
       modified_at: new Date(doc.modified_at).toLocaleString()
@@ -176,7 +177,7 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
 
     return {
       items: transformedData,
-      total: response.data.length
+      total: Array.isArray(response.data) ? response.data.length : (response.data.total || 0)
     };
   } catch (error) {
     console.error('Error fetching document logs:', error);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -37,6 +37,8 @@ import UploadIcon from '@mui/icons-material/Upload';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import InfoIcon from '@mui/icons-material/Info';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { getDocumentIndexLogs, deleteDocumentIndexLog, uploadDocument } from '../../services/api';
 import FilterPanel from './FilterPanel';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -148,6 +150,92 @@ const hasValidFilters = (filters) => {
   );
 };
 
+const FileDropZone = ({ onFileDrop, selectedFile, disabled, accept }) => {
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!disabled) setIsDragActive(true);
+  }, [disabled]);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    
+    if (disabled) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      onFileDrop(e.dataTransfer.files[0]);
+    }
+  }, [onFileDrop, disabled]);
+
+  return (
+    <Box
+      sx={{
+        border: '2px dashed',
+        borderColor: isDragActive ? 'primary.main' : 'grey.300',
+        borderRadius: 1,
+        p: 3,
+        backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+        textAlign: 'center',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.2s ease',
+        opacity: disabled ? 0.6 : 1,
+        '&:hover': {
+          borderColor: !disabled && 'primary.main',
+          backgroundColor: !disabled && 'action.hover'
+        }
+      }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {selectedFile ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+          <InsertDriveFileIcon color="primary" />
+          <Typography>{selectedFile.name}</Typography>
+        </Box>
+      ) : (
+        <>
+          <input
+            type="file"
+            onChange={(e) => e.target.files?.[0] && onFileDrop(e.target.files[0])}
+            style={{ display: 'none' }}
+            id="file-input"
+            accept={accept}
+            disabled={disabled}
+          />
+          <label htmlFor="file-input" style={{ width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+              <Typography variant="body1" gutterBottom>
+                Drag and drop a file here, or click to select
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                Supported formats: {accept?.split(',').join(', ')}
+              </Typography>
+            </Box>
+          </label>
+        </>
+      )}
+    </Box>
+  );
+};
+
 function DocumentIndexPanel({ user }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -220,22 +308,22 @@ function DocumentIndexPanel({ user }) {
       setIsLoading(true);
       setError(null);
 
-      console.log('Filters being sent:', filters);
-
       const response = await getDocumentIndexLogs(page + 1, rowsPerPage, {
         source: filters.source,
-        sourceType: filters.sourceType,
-        status: filters.status,
+        sourceType: filters.sourceType !== 'all' ? filters.sourceType : null,
+        status: filters.status !== 'all' ? filters.status : null,
         createdBy: filters.createdBy,
-        dateRange: filters.dateRange
+        fromDate: filters.dateRange?.start,
+        toDate: filters.dateRange?.end
       });
 
-      if (Array.isArray(response)) {
+      if (response && Array.isArray(response.items)) {
+        setDocuments(response.items);
+        setTotal(response.total || 0);
+      } else if (Array.isArray(response)) {
+        // Handle legacy response format for backward compatibility
         setDocuments(response);
         setTotal(response.length);
-      } else if (response.items) {
-        setDocuments(response.items);
-        setTotal(response.total);
       } else {
         setDocuments([]);
         setTotal(0);
@@ -598,7 +686,10 @@ function DocumentIndexPanel({ user }) {
                   <InputLabel>Source Type</InputLabel>
                   <Select
                     value={selectedSourceType}
-                    onChange={(e) => setSelectedSourceType(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedSourceType(e.target.value);
+                      setSelectedFile(null);
+                    }}
                     label="Source Type"
                     disabled={uploading}
                   >
@@ -610,9 +701,10 @@ function DocumentIndexPanel({ user }) {
                   </Select>
                 </FormControl>
 
-                <input
-                  type="file"
-                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                <FileDropZone
+                  onFileDrop={setSelectedFile}
+                  selectedFile={selectedFile}
+                  disabled={uploading}
                   accept={
                     selectedSourceType === 'pdf' ? '.pdf' :
                     selectedSourceType === 'csv' ? '.csv' :
@@ -621,8 +713,19 @@ function DocumentIndexPanel({ user }) {
                     selectedSourceType === 'docx' ? '.docx' :
                     undefined
                   }
-                  disabled={uploading}
                 />
+                
+                {selectedFile && (
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedFile(null)}
+                      disabled={uploading}
+                    >
+                      Remove file
+                    </Button>
+                  </Box>
+                )}
               </>
             )}
 
