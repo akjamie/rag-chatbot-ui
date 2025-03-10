@@ -168,7 +168,8 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
     });
 
     // Transform UTC dates to local timezone in the response
-    const transformedData = response.data.map(doc => ({
+    const items = Array.isArray(response.data) ? response.data : (response.data.items || []);
+    const transformedData = items.map(doc => ({
       ...doc,
       created_at: new Date(doc.created_at).toLocaleString(),
       modified_at: new Date(doc.modified_at).toLocaleString()
@@ -176,7 +177,7 @@ export const getDocumentIndexLogs = async (page, pageSize, filters = {}) => {
 
     return {
       items: transformedData,
-      total: response.data.length
+      total: Array.isArray(response.data) ? response.data.length : (response.data.total || 0)
     };
   } catch (error) {
     console.error('Error fetching document logs:', error);
@@ -249,23 +250,32 @@ export const sendChatQuery = async (userInput, headers = {}) => {
   }
 };
 
-export const uploadDocument = async (file, category, sourceType, url, userId) => {
-  const formData = new FormData();
-  formData.append('category', category);
-  
-  if (category === 'file' && file) {
-    formData.append('file', file);
-  } else if ((category === 'web_page' || category === 'confluence') && url) {
-    formData.append('url', url);
-  }
-  
-  const response = await docLogApi.post('/embedding/docs/upload', formData, {
-    headers: {
-      'X-User-Id': userId,
-      'Content-Type': 'multipart/form-data'
+export const uploadDocument = async (formData, userId) => {
+  try {
+    // Log FormData contents for debugging
+    console.log('FormData contents:');
+    for (let pair of formData.entries()) {
+      console.log(`${pair[0]}: ${typeof pair[1] === 'object' ? 'File/Blob' : pair[1]}`);
     }
-  });
-  return response.data;
+
+    const response = await docLogApi.post('/embedding/docs/upload', 
+      formData,
+      {
+        headers: {
+          'X-User-Id': userId,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Upload error:', error);
+    if (error.response?.data?.detail) {
+      throw new Error(error.response.data.detail);
+    }
+    throw error;
+  }
 };
 
 export const deleteDocumentIndexLog = async (logId) => {

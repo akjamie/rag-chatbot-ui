@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -37,6 +37,8 @@ import UploadIcon from '@mui/icons-material/Upload';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import InfoIcon from '@mui/icons-material/Info';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { getDocumentIndexLogs, deleteDocumentIndexLog, uploadDocument } from '../../services/api';
 import FilterPanel from './FilterPanel';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -148,6 +150,92 @@ const hasValidFilters = (filters) => {
   );
 };
 
+const FileDropZone = ({ onFileDrop, selectedFile, disabled, accept }) => {
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!disabled) setIsDragActive(true);
+  }, [disabled]);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    
+    if (disabled) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      onFileDrop(e.dataTransfer.files[0]);
+    }
+  }, [onFileDrop, disabled]);
+
+  return (
+    <Box
+      sx={{
+        border: '2px dashed',
+        borderColor: isDragActive ? 'primary.main' : 'grey.300',
+        borderRadius: 1,
+        p: 3,
+        backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+        textAlign: 'center',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.2s ease',
+        opacity: disabled ? 0.6 : 1,
+        '&:hover': {
+          borderColor: !disabled && 'primary.main',
+          backgroundColor: !disabled && 'action.hover'
+        }
+      }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {selectedFile ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+          <InsertDriveFileIcon color="primary" />
+          <Typography>{selectedFile.name}</Typography>
+        </Box>
+      ) : (
+        <>
+          <input
+            type="file"
+            onChange={(e) => e.target.files?.[0] && onFileDrop(e.target.files[0])}
+            style={{ display: 'none' }}
+            id="file-input"
+            accept={accept}
+            disabled={disabled}
+          />
+          <label htmlFor="file-input" style={{ width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+              <Typography variant="body1" gutterBottom>
+                Drag and drop a file here, or click to select
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                Supported formats: {accept?.split(',').join(', ')}
+              </Typography>
+            </Box>
+          </label>
+        </>
+      )}
+    </Box>
+  );
+};
+
 function DocumentIndexPanel({ user }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -164,8 +252,17 @@ function DocumentIndexPanel({ user }) {
     status: 'all',
     createdBy: '',
     dateRange: {
-      start: null,
-      end: null
+      start: (() => {
+        const date = new Date();
+        date.setDate(date.getDate() - 7);
+        date.setHours(0, 0, 0, 0);
+        return date;
+      })(),
+      end: (() => {
+        const date = new Date();
+        date.setHours(23, 59, 59, 999);
+        return date;
+      })()
     }
   });
   const [uploadType, setUploadType] = useState('file');
@@ -182,6 +279,15 @@ function DocumentIndexPanel({ user }) {
   const [uploadCategory, setUploadCategory] = useState('file');
   const [uploading, setUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [snippetTitle, setSnippetTitle] = useState('');
+  const [snippetContent, setSnippetContent] = useState('');
+
+  const VALID_CATEGORIES = {
+    file: 'file',
+    web_page: 'web_page',
+    confluence: 'confluence',
+    knowledge_snippet: 'knowledge_snippet'
+  };
 
   const loadDocuments = async () => {
     try {
@@ -202,22 +308,22 @@ function DocumentIndexPanel({ user }) {
       setIsLoading(true);
       setError(null);
 
-      console.log('Filters being sent:', filters);
-
       const response = await getDocumentIndexLogs(page + 1, rowsPerPage, {
         source: filters.source,
-        sourceType: filters.sourceType,
-        status: filters.status,
+        sourceType: filters.sourceType !== 'all' ? filters.sourceType : null,
+        status: filters.status !== 'all' ? filters.status : null,
         createdBy: filters.createdBy,
-        dateRange: filters.dateRange
+        fromDate: filters.dateRange?.start,
+        toDate: filters.dateRange?.end
       });
 
-      if (Array.isArray(response)) {
+      if (response && Array.isArray(response.items)) {
+        setDocuments(response.items);
+        setTotal(response.total || 0);
+      } else if (Array.isArray(response)) {
+        // Handle legacy response format for backward compatibility
         setDocuments(response);
         setTotal(response.length);
-      } else if (response.items) {
-        setDocuments(response.items);
-        setTotal(response.total);
       } else {
         setDocuments([]);
         setTotal(0);
@@ -272,17 +378,56 @@ function DocumentIndexPanel({ user }) {
     try {
       setUploading(true);
       
-      const response = await uploadDocument(
-        selectedFile,
-        uploadCategory,
-        selectedSourceType,
-        urlInput,
-        user.id
-      );
+      const formData = new FormData();
+
+      // For file uploads
+      if (uploadCategory === VALID_CATEGORIES.file) {
+        if (!selectedFile) {
+          throw new Error('Please select a file');
+        }
+        formData.append('file', selectedFile);
+        formData.append('category', 'file');
+        formData.append('source_type', selectedSourceType);
+      } 
+      // For web pages and confluence
+      else if (uploadCategory === VALID_CATEGORIES.web_page || uploadCategory === VALID_CATEGORIES.confluence) {
+        const url = urlInput.trim();
+        if (!url) {
+          throw new Error('Please enter a valid URL');
+        }
+        formData.append('url', url);
+        formData.append('category', uploadCategory);
+        formData.append('source_type', uploadCategory);
+      } 
+      // For knowledge snippets
+      else if (uploadCategory === VALID_CATEGORIES.knowledge_snippet) {
+        const content = snippetContent.trim();
+        if (!content) {
+          throw new Error('Please enter snippet content');
+        }
+        if (content.length > 2000) {
+          throw new Error('Content exceeds 2000 character limit');
+        }
+        formData.append('content', content);
+        formData.append('category', 'knowledge_snippet');
+        formData.append('source_type', 'knowledge_snippet');
+        
+        const title = snippetTitle.trim();
+        if (title) {
+          formData.append('title', title);
+        }
+      }
+
+      // Debug log
+      console.log('Uploading document with category:', uploadCategory);
+      for (let pair of formData.entries()) {
+        console.log(`${pair[0]}: ${typeof pair[1] === 'object' ? 'File/Blob' : pair[1]}`);
+      }
+      
+      const response = await uploadDocument(formData, user.id);
 
       setUploadDialog(false);
-      setSelectedFile(null);
-      setUrlInput('');
+      resetUploadForm();
       setToast({
         open: true,
         message: 'Document uploaded successfully',
@@ -293,12 +438,19 @@ function DocumentIndexPanel({ user }) {
       console.error('Error uploading document:', error);
       setToast({
         open: true,
-        message: 'Failed to upload document: ' + (error.response?.data?.detail || error.message),
+        message: error.message || 'Failed to upload document',
         severity: 'error'
       });
     } finally {
       setUploading(false);
     }
+  };
+
+  const resetUploadForm = () => {
+    setSelectedFile(null);
+    setUrlInput('');
+    setSnippetTitle('');
+    setSnippetContent('');
   };
 
   const handleSearch = () => {
@@ -499,8 +651,7 @@ function DocumentIndexPanel({ user }) {
         open={uploadDialog} 
         onClose={() => {
           setUploadDialog(false);
-          setSelectedFile(null);
-          setUrlInput('');
+          resetUploadForm();
         }}
         maxWidth="sm"
         fullWidth
@@ -516,23 +667,31 @@ function DocumentIndexPanel({ user }) {
                   setUploadCategory(e.target.value);
                   setSelectedFile(null);
                   setUrlInput('');
+                  setSnippetTitle('');
+                  setSnippetContent('');
                 }}
                 label="Category"
+                disabled={uploading}
               >
-                <MenuItem value="file">File Upload</MenuItem>
-                <MenuItem value="web_page">Web Page</MenuItem>
-                <MenuItem value="confluence">Confluence</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.file}>File Upload</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.web_page}>Web Page</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.confluence}>Confluence</MenuItem>
+                <MenuItem value={VALID_CATEGORIES.knowledge_snippet}>Knowledge Snippet</MenuItem>
               </Select>
             </FormControl>
 
-            {uploadCategory === 'file' && (
+            {uploadCategory === VALID_CATEGORIES.file && (
               <>
                 <FormControl fullWidth>
                   <InputLabel>Source Type</InputLabel>
                   <Select
                     value={selectedSourceType}
-                    onChange={(e) => setSelectedSourceType(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedSourceType(e.target.value);
+                      setSelectedFile(null);
+                    }}
                     label="Source Type"
+                    disabled={uploading}
                   >
                     <MenuItem value="csv">CSV</MenuItem>
                     <MenuItem value="pdf">PDF</MenuItem>
@@ -542,9 +701,10 @@ function DocumentIndexPanel({ user }) {
                   </Select>
                 </FormControl>
 
-                <input
-                  type="file"
-                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                <FileDropZone
+                  onFileDrop={setSelectedFile}
+                  selectedFile={selectedFile}
+                  disabled={uploading}
                   accept={
                     selectedSourceType === 'pdf' ? '.pdf' :
                     selectedSourceType === 'csv' ? '.csv' :
@@ -554,22 +714,89 @@ function DocumentIndexPanel({ user }) {
                     undefined
                   }
                 />
+                
+                {selectedFile && (
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedFile(null)}
+                      disabled={uploading}
+                    >
+                      Remove file
+                    </Button>
+                  </Box>
+                )}
               </>
             )}
 
-            {(uploadCategory === 'web_page' || uploadCategory === 'confluence') && (
+            {(uploadCategory === VALID_CATEGORIES.web_page || uploadCategory === VALID_CATEGORIES.confluence) && (
               <TextField
                 fullWidth
-                label={uploadCategory === 'web_page' ? "URL" : "Confluence URL"}
+                label={uploadCategory === VALID_CATEGORIES.web_page ? "URL" : "Confluence URL"}
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder={`Enter ${uploadCategory === 'web_page' ? 'webpage' : 'confluence'} URL`}
+                placeholder={`Enter ${uploadCategory === VALID_CATEGORIES.web_page ? 'webpage' : 'confluence'} URL`}
+                disabled={uploading}
               />
+            )}
+
+            {uploadCategory === VALID_CATEGORIES.knowledge_snippet && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Title (Optional)"
+                  value={snippetTitle}
+                  onChange={(e) => setSnippetTitle(e.target.value)}
+                  placeholder="Enter a title for your knowledge snippet"
+                  disabled={uploading}
+                />
+                <Box sx={{ position: 'relative' }}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Content"
+                    multiline
+                    rows={6}
+                    value={snippetContent}
+                    onChange={(e) => {
+                      const newContent = e.target.value;
+                      if (newContent.length <= 2000) {
+                        setSnippetContent(newContent);
+                      }
+                    }}
+                    placeholder="Enter your knowledge snippet content"
+                    error={snippetContent.length > 2000 || !snippetContent.trim()}
+                    helperText={
+                      !snippetContent.trim() ? 'Content is required' :
+                      snippetContent.length > 2000 ? `${snippetContent.length}/2000 characters (exceeds limit)` :
+                      `${snippetContent.length}/2000 characters`
+                    }
+                    disabled={uploading}
+                  />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 14,
+                      color: snippetContent.length > 2000 ? 'error.main' : 'text.secondary'
+                    }}
+                  >
+                    {2000 - snippetContent.length} characters remaining
+                  </Typography>
+                </Box>
+              </>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUploadDialog(false)} disabled={uploading}>
+          <Button 
+            onClick={() => {
+              setUploadDialog(false);
+              resetUploadForm();
+            }} 
+            disabled={uploading}
+          >
             Cancel
           </Button>
           <Button
@@ -577,7 +804,8 @@ function DocumentIndexPanel({ user }) {
             variant="contained"
             disabled={
               uploading || (
-                uploadCategory === 'file' ? !selectedFile :
+                uploadCategory === VALID_CATEGORIES.file ? !selectedFile :
+                uploadCategory === VALID_CATEGORIES.knowledge_snippet ? (!snippetContent || snippetContent.length > 2000) :
                 !urlInput
               )
             }
