@@ -81,9 +81,28 @@ function ChatArea({ selectedChat, onNewSession, user }) {
         const formattedMessages = history.messages.map(msg => {
           try {
             if (typeof msg.response === 'string') {
-              // First evaluate the string as a JavaScript object literal
-              // This handles the single-quoted string format safely
-              const parsed = eval(`(${msg.response})`);
+              // Safely parse the JSON string
+              let parsed;
+              try {
+                // First try direct JSON parse
+                try {
+                  parsed = JSON.parse(msg.response);
+                } catch {
+                  // If direct parse fails, try cleaning the string
+                  const cleanedString = msg.response
+                    .replace(/'/g, '"')  // Replace single quotes with double quotes
+                    .replace(/\\"/g, '\\"')  // Preserve escaped double quotes
+                    .replace(/\\'/g, "'");  // Handle escaped single quotes
+                  parsed = JSON.parse(cleanedString);
+                }
+              } catch (parseError) {
+                console.error('Error parsing response:', parseError);
+                parsed = {
+                  answer: msg.response,
+                  suggested_questions: [],
+                  citations: []
+                };
+              }
               
               return {
                 user_input: msg.user_input,
