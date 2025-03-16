@@ -291,8 +291,8 @@ export const deleteDocumentIndexLog = async (logId) => {
 export const updateMessageLike = async (sessionId, messageId, liked) => {
   try {
     const user = getCurrentUser();
-    await chatApi().patch(
-        `/chat/histories/${user.id}/${sessionId}/${requestId}/like`,
+    const response = await chatApi.patch(
+        `/chat/histories/${user.id}/${sessionId}/${messageId}/like`,
         { liked }
     );
     return response.data;

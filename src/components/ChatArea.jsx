@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {Alert, Avatar, Box, Button, IconButton, Paper, Snackbar, TextField, Typography} from '@mui/material';
+import {Alert, Avatar, Box, Button, IconButton, Paper, Snackbar, TextField, Typography, Link} from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
 import ThumbDownAltIcon from '@mui/icons-material/ThumbDownAlt';
@@ -80,36 +80,48 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       if (history?.messages) {
         const formattedMessages = history.messages.map(msg => {
           try {
+            let parsed;
             if (typeof msg.response === 'string') {
-              // First evaluate the string as a JavaScript object literal
-              // This handles the single-quoted string format safely
-              const parsed = eval(`(${msg.response})`);
-              
-              return {
-                user_input: msg.user_input,
-                response: parsed.answer,
-                request_id: msg.request_id,
-                session_id: chatSessionId,
-                liked: msg.liked,
-                suggested_questions: parsed.suggested_questions || [],
-                citations: parsed.citations || [],
-                output_format: parsed.metadata?.output_format || 'text'
-              };
+              // Clean up the string before parsing
+              const cleanedString = msg.response
+                .replace(/\\n/g, '\n')  // Convert escaped newlines to actual newlines
+                .replace(/\\'/g, "'")   // Convert escaped single quotes
+                .replace(/'/g, '"');    // Convert single quotes to double quotes for JSON parsing
+
+              try {
+                parsed = JSON.parse(cleanedString);
+              } catch (parseError) {
+                console.error('Error parsing cleaned response:', parseError);
+                // If parsing fails, try to evaluate as a JavaScript object
+                try {
+                  // Using Function to safely evaluate the string as a JavaScript object
+                  parsed = Function(`'use strict'; return (${msg.response})`)();
+                } catch (evalError) {
+                  console.error('Error evaluating response:', evalError);
+                  parsed = {
+                    answer: msg.response,
+                    suggested_questions: [],
+                    citations: []
+                  };
+                }
+              }
+            } else {
+              // Response is already an object
+              parsed = msg.response;
             }
             
-            // Handle case where response is already an object
             return {
               user_input: msg.user_input,
-              response: msg.response.answer || msg.response,
+              response: parsed.answer,
               request_id: msg.request_id,
               session_id: chatSessionId,
               liked: msg.liked,
-              suggested_questions: msg.response.suggested_questions || [],
-              citations: msg.response.citations || [],
-              output_format: msg.response.metadata?.output_format || 'text'
+              suggested_questions: parsed.suggested_questions || [],
+              citations: parsed.citations || [],
+              output_format: parsed.metadata?.output_format || 'text'
             };
           } catch (e) {
-            console.error('Error parsing message:', e);
+            console.error('Error processing message:', e);
             return {
               user_input: msg.user_input,
               response: "Error parsing message. Please try refreshing the page.",
@@ -149,15 +161,19 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       setInput('');
     }
 
-    // For retry, update existing message, otherwise add new one
+    // Generate a temporary request ID for the new message
+    const tempRequestId = `temp_${Date.now()}`;
+
+    // For retry, update existing error message, otherwise add new one
     if (retryMessage) {
       setMessages(prev => prev.map(msg => 
-        msg.user_input === userMessage
+        msg.user_input === userMessage && msg.error // Match error message for retry
           ? { 
               ...msg, 
               response: null, 
               httpStatus: null, 
-              error: false
+              error: false,
+              request_id: tempRequestId // Add temporary request ID
             }
           : msg
       ));
@@ -165,7 +181,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       setMessages(prev => [...prev, {
         user_input: userMessage,
         response: null,
-        request_id: null,
+        request_id: tempRequestId,
         session_id: currentSession?.session_id,
         error: false
       }]);
@@ -183,6 +199,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       
       // Extract session ID from response if this is a new chat
       const sessionId = response.customHeaders?.['X-Session-Id'] || currentSession?.session_id;
+      const responseRequestId = response.customHeaders?.['X-Request-Id'];
       
       // If this is a new chat (no current session), set up the new session
       if (!currentSession?.session_id && sessionId) {
@@ -198,11 +215,11 @@ function ChatArea({ selectedChat, onNewSession, user }) {
 
       // Update message with success response
       setMessages(prev => prev.map(msg => 
-        msg.user_input === userMessage
+        msg.request_id === tempRequestId
           ? {
               ...msg,
               response: response.data.data.answer,
-              request_id: response.customHeaders?.['X-Request-Id'],
+              request_id: responseRequestId,
               session_id: sessionId,
               suggested_questions: response.data.data.suggested_questions || [],
               citations: response.data.data.citations || [],
@@ -213,12 +230,12 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       ));
 
     } catch (error) {
-      // Error handling remains the same
       const httpStatus = error.response?.status || 500;
       const errorMessage = error.response?.data?.detail || error.message || 'Request failed';
 
+      // Only update the message with matching temporary request ID
       setMessages(prev => prev.map(msg =>
-        msg.user_input === userMessage
+        msg.request_id === tempRequestId
           ? {
               ...msg,
               response: errorMessage,
@@ -383,23 +400,61 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                 </Box>
               </Box>
             ) : (
-              // Success message content
               <Box>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {message.response}
                 </ReactMarkdown>
 
                 {message.citations?.length > 0 && (
-                  <Typography 
-                    variant="caption"
+                  <Box 
                     sx={{ 
                       mt: 2,
-                      display: 'block',
-                      color: 'text.secondary'
+                      p: 1.5,
+                      borderRadius: 1,
+                      bgcolor: theme => theme.palette.mode === 'dark' 
+                        ? 'rgba(255, 255, 255, 0.05)' 
+                        : 'rgba(0, 0, 0, 0.03)',
                     }}
                   >
-                    Citations: {message.citations.join(', ')}
-                  </Typography>
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        display: 'block',
+                        mb: 1,
+                        color: 'text.secondary',
+                        fontWeight: 500
+                      }}
+                    >
+                      Citations:
+                    </Typography>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      gap: 0.5 
+                    }}>
+                      {message.citations.map((citation, index) => (
+                        <Link
+                          key={index}
+                          href={citation}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{
+                            color: 'primary.main',
+                            fontSize: '0.8125rem',
+                            textDecoration: 'none',
+                            '&:hover': {
+                              textDecoration: 'underline'
+                            },
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5
+                          }}
+                        >
+                          {citation}
+                        </Link>
+                      ))}
+                    </Box>
+                  </Box>
                 )}
 
                 <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
