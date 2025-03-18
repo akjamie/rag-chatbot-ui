@@ -75,10 +75,15 @@ function ChatHistory({ histories = [], onSelectChat, onDeleteHistory, currentSes
   };
 
   const handleNewChat = () => {
+    // Clear current chat first
     onSelectChat(null);
-    if (onNewChat) {
-      onNewChat();
-    }
+    
+    // Small delay to ensure state is cleared before creating new chat
+    setTimeout(() => {
+      if (onNewChat) {
+        onNewChat();
+      }
+    }, 0);
   };
 
   if (!Array.isArray(histories)) {
