@@ -54,20 +54,23 @@ function ChatArea({ selectedChat, onNewSession, user }) {
 
   // Watch for selectedChat changes or deletion
   useEffect(() => {
-    if (selectedChat === null) {
-      // Clear messages when no chat is selected or chat is deleted
+    const handleChatChange = async () => {
+      // Clear messages first
       setMessages([]);
       setInput('');
       setCurrentSession(null);
-    } else if (selectedChat?.session_id?.trim()) {
-      setMessages([]);  // Clear previous messages
-      setInput('');
-      setCurrentSession({
-        session_id: selectedChat.session_id,
-        user_id: user.id
-      });
-      loadChatHistory(selectedChat.session_id);
-    }
+      
+      // If there's a selected chat, load it
+      if (selectedChat?.session_id?.trim()) {
+        setCurrentSession({
+          session_id: selectedChat.session_id,
+          user_id: user.id
+        });
+        await loadChatHistory(selectedChat.session_id);
+      }
+    };
+
+    handleChatChange();
   }, [selectedChat, user.id]);
 
   const loadChatHistory = async (chatSessionId) => {
@@ -82,49 +85,81 @@ function ChatArea({ selectedChat, onNewSession, user }) {
           try {
             let parsed;
             if (typeof msg.response === 'string') {
-              // Clean up the string before parsing
-              const cleanedString = msg.response
-                .replace(/\\n/g, '\n')  // Convert escaped newlines to actual newlines
-                .replace(/\\'/g, "'")   // Convert escaped single quotes
-                .replace(/'/g, '"');    // Convert single quotes to double quotes for JSON parsing
-
-              try {
-                parsed = JSON.parse(cleanedString);
-              } catch (parseError) {
-                console.error('Error parsing cleaned response:', parseError);
-                // If parsing fails, try to evaluate as a JavaScript object
+              // Try to detect if it's already a stringified JSON object
+              if (msg.response.trim().startsWith('{') && msg.response.trim().endsWith('}')) {
                 try {
-                  // Using Function to safely evaluate the string as a JavaScript object
-                  parsed = Function(`'use strict'; return (${msg.response})`)();
-                } catch (evalError) {
-                  console.error('Error evaluating response:', evalError);
-                  parsed = {
-                    answer: msg.response,
-                    suggested_questions: [],
-                    citations: []
-                  };
+                  parsed = JSON.parse(msg.response.replace(/'/g, '"'));
+                } catch (jsonError) {
+                  // If JSON parse fails, try eval
+                  try {
+                    parsed = eval(`(${msg.response})`);
+                  } catch (evalError) {
+                    console.error('Parse attempts failed:', { jsonError, evalError });
+                    parsed = {
+                      answer: msg.response,
+                      suggested_questions: [],
+                      citations: [],
+                      metadata: { output_format: 'text' }
+                    };
+                  }
                 }
+              } else {
+                // Not a JSON-like string, treat as plain text
+                parsed = {
+                  answer: msg.response,
+                  suggested_questions: [],
+                  citations: [],
+                  metadata: { output_format: 'text' }
+                };
               }
-            } else {
-              // Response is already an object
+            } else if (typeof msg.response === 'object' && msg.response !== null) {
+              // Already an object, use it directly
               parsed = msg.response;
+            } else {
+              parsed = {
+                answer: String(msg.response),
+                suggested_questions: [],
+                citations: [],
+                metadata: { output_format: 'text' }
+              };
             }
-            
+
+            // Clean up the answer if needed
+            if (typeof parsed.answer === 'string') {
+              parsed.answer = parsed.answer
+                .replace(/\\n/g, '\n')       // Convert escaped newlines back
+                .replace(/\\r/g, '')         // Remove carriage returns
+                .replace(/\\\\/g, '\\')      // Fix double escaped backslashes
+                .replace(/\\'/g, "'")        // Fix escaped single quotes
+                .replace(/\\"/g, '"')        // Fix escaped double quotes
+                .trim();                     // Remove extra whitespace
+            }
+
+            // Ensure arrays are properly handled
+            const suggested_questions = Array.isArray(parsed.suggested_questions) 
+              ? parsed.suggested_questions 
+              : [];
+
+            const citations = Array.isArray(parsed.citations)
+              ? parsed.citations
+              : [];
+
             return {
               user_input: msg.user_input,
-              response: parsed.answer,
+              response: parsed.answer || msg.response,
               request_id: msg.request_id,
               session_id: chatSessionId,
               liked: msg.liked,
-              suggested_questions: parsed.suggested_questions || [],
-              citations: parsed.citations || [],
+              suggested_questions,
+              citations,
               output_format: parsed.metadata?.output_format || 'text'
             };
           } catch (e) {
-            console.error('Error processing message:', e);
+            console.error('Error processing message:', e, 'Original message:', msg);
+            // Return the original response if parsing fails
             return {
               user_input: msg.user_input,
-              response: "Error parsing message. Please try refreshing the page.",
+              response: typeof msg.response === 'string' ? msg.response : String(msg.response),
               request_id: msg.request_id,
               session_id: chatSessionId,
               liked: msg.liked,
@@ -135,6 +170,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
           }
         });
 
+        console.log('Formatted messages:', formattedMessages);
         setMessages(formattedMessages);
         setCurrentSession({
           session_id: chatSessionId,
@@ -153,7 +189,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     }
   };
 
-  const handleSend = async (retryMessage) => {
+  const handleSend = async (retryMessage, originalRequestId) => {
     if (!retryMessage && !input.trim()) return;
 
     const userMessage = retryMessage || input;
@@ -164,27 +200,38 @@ function ChatArea({ selectedChat, onNewSession, user }) {
     // Generate a temporary request ID for the new message
     const tempRequestId = `temp_${Date.now()}`;
 
-    // For retry, update existing error message, otherwise add new one
-    if (retryMessage) {
-      setMessages(prev => prev.map(msg => 
-        msg.user_input === userMessage && msg.error // Match error message for retry
-          ? { 
-              ...msg, 
-              response: null, 
-              httpStatus: null, 
-              error: false,
-              request_id: tempRequestId // Add temporary request ID
-            }
-          : msg
-      ));
-    } else {
-      setMessages(prev => [...prev, {
+    // For new chat (no session), clear existing messages
+    if (!currentSession?.session_id) {
+      setMessages([{
         user_input: userMessage,
         response: null,
         request_id: tempRequestId,
-        session_id: currentSession?.session_id,
+        session_id: null,
         error: false
       }]);
+    } else {
+      // For existing chat or retry
+      if (retryMessage) {
+        setMessages(prev => prev.map(msg => 
+          msg.request_id === originalRequestId && msg.error
+            ? { 
+                ...msg, 
+                response: null, 
+                httpStatus: null, 
+                error: false,
+                request_id: tempRequestId
+              }
+            : msg
+        ));
+      } else {
+        setMessages(prev => [...prev, {
+          user_input: userMessage,
+          response: null,
+          request_id: tempRequestId,
+          session_id: currentSession?.session_id,
+          error: false
+        }]);
+      }
     }
 
     setIsLoading(true);
@@ -201,6 +248,10 @@ function ChatArea({ selectedChat, onNewSession, user }) {
       const sessionId = response.customHeaders?.['X-Session-Id'] || currentSession?.session_id;
       const responseRequestId = response.customHeaders?.['X-Request-Id'];
       
+      // Get the response data - directly use the data structure from API
+      const parsed = response.data.data;
+      console.log('Response data:', parsed); // Debug log
+
       // If this is a new chat (no current session), set up the new session
       if (!currentSession?.session_id && sessionId) {
         const newSession = {
@@ -213,38 +264,54 @@ function ChatArea({ selectedChat, onNewSession, user }) {
         }
       }
 
-      // Update message with success response
+      // Clean up only the answer string
+      let cleanedAnswer = parsed.answer;
+
+      // Update message with processed response
       setMessages(prev => prev.map(msg => 
         msg.request_id === tempRequestId
           ? {
               ...msg,
-              response: response.data.data.answer,
+              response: cleanedAnswer,
               request_id: responseRequestId,
               session_id: sessionId,
-              suggested_questions: response.data.data.suggested_questions || [],
-              citations: response.data.data.citations || [],
+              suggested_questions: Array.isArray(parsed.suggested_questions) ? parsed.suggested_questions : [],
+              citations: Array.isArray(parsed.citations) ? parsed.citations : [],
               error: false,
-              httpStatus: response.status || 200
+              httpStatus: response.status || 200,
+              output_format: parsed.metadata?.output_format || 'text'
             }
           : msg
       ));
 
     } catch (error) {
       const httpStatus = error.response?.status || 500;
-      const errorMessage = error.response?.data?.detail || error.message || 'Request failed';
+      let errorMessage;
+      
+      // Handle structured error response
+      if (error.response?.data?.error_message) {
+          errorMessage = error.response.data.error_message;
+          // If error message includes request ID, extract the main message
+          if (errorMessage.includes('Request ID:')) {
+              errorMessage = errorMessage.split('(Request ID:')[0].trim();
+          }
+      } else if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+      } else {
+          errorMessage = error.message || 'Request failed';
+      }
 
-      // Only update the message with matching temporary request ID
       setMessages(prev => prev.map(msg =>
-        msg.request_id === tempRequestId
-          ? {
-              ...msg,
-              response: errorMessage,
-              httpStatus: httpStatus,
-              error: true,
-              suggested_questions: [],
-              citations: []
-            }
-          : msg
+          msg.request_id === tempRequestId
+              ? {
+                  ...msg,
+                  response: errorMessage,
+                  httpStatus: httpStatus,
+                  error: true,
+                  suggested_questions: [],
+                  citations: []
+              }
+              : msg
       ));
     } finally {
       setIsLoading(false);
@@ -252,17 +319,20 @@ function ChatArea({ selectedChat, onNewSession, user }) {
   };
 
   const handleSuggestedQuestion = (question) => {
+    // Generate a temporary request ID for the suggested question
+    const tempRequestId = `temp_${Date.now()}`;
+    
     // Add the question as a user message first
     setMessages(prev => [...prev, {
       user_input: question,
       response: null,
-      request_id: null,
+      request_id: tempRequestId,  // Add the tempRequestId here
       session_id: currentSession?.session_id,
       error: false
     }]);
     
-    // Then handle it like a new query
-    handleSend(question);
+    // Pass both the question and the tempRequestId to handleSend
+    handleSend(question, tempRequestId);  // Changed to pass tempRequestId as originalRequestId
   };
 
   const handleLike = async (messageId, liked) => {
@@ -383,7 +453,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   <Button
                     size="small"
                     variant="text"
-                    onClick={() => handleSend(message.user_input)}
+                    onClick={() => handleSend(message.user_input, message.request_id)}
                     startIcon={<RefreshIcon fontSize="small" />}
                     sx={{
                       color: 'error.main',
@@ -533,6 +603,16 @@ function ChatArea({ selectedChat, onNewSession, user }) {
   useEffect(() => {
     console.log('Messages updated:', messages);
   }, [messages]);
+
+  // Add cleanup effect when component unmounts
+  useEffect(() => {
+    return () => {
+      setMessages([]);
+      setInput('');
+      setCurrentSession(null);
+      setIsLoading(false);
+    };
+  }, []);
 
   return (
     <StyledChatArea sx={{ 
