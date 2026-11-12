@@ -1,25 +1,25 @@
 # ASdlc Latest Risk Assessment Snapshot
-# Generated at: 2026-11-11T01:56:30.354Z
-# Change: update-dependencies-get-related-libs (seq: 2)
+# Generated at: 2026-11-12T14:53:43.850Z
+# Change: update-dependencies-get-related-libs (seq: 3)
 
 schema_version: 1
 change_id: update-dependencies-get-related-libs
-seq: 2
-prev_hash: 96122dbe9bed8fb9f4b031e5838c4f09e0d7c140ce35c7a68368ad6a9e5bcbe8
-timestamp: 2026-11-11T01:56:30.354Z
+seq: 3
+prev_hash: fbb8cae29e4d257b86bcc79d3c8812dfb5ae1ab3b611b9c3d39e29f6a314c60a
+timestamp: 2026-11-12T14:53:43.850Z
 actor:
   type: system
   id: asdlc
-stage: spec
+stage: new
 role: primary
 compared_to: null
-status: ready
+status: provisional
 verdict: ok
 defaulted_cause: null
 change_type: chore
 source:
-  base_sha: HEAD
-  head_sha: null
+  base_sha: origin/main
+  head_sha: HEAD
   harness_rules_version: 2026.10.0
   engine_version: 1.9.0
   task_ref: null
@@ -29,15 +29,10 @@ risk:
   confidence: high
 vectors:
   v1_intent:
-    level: L0
+    level: L1
     confidence: high
-    evaluator_mode: heuristic_seed
-    evidence:
-      - id: V1_AI_TEST_EVALUATION
-        kind: scanner_result
-        signal: soft
-        summary: "Deterministic Heuristic Baseline: Change is strictly confined to test
-          suites, mocks, and test assertions."
+    evaluator_mode: agent_native
+    evidence: []
     unresolved: []
     mandatory_human_review: false
     no_signal: false
@@ -75,4 +70,4 @@ transition:
   to_level: L2
   direction: same
   triggers: []
-hash: fbb8cae29e4d257b86bcc79d3c8812dfb5ae1ab3b611b9c3d39e29f6a314c60a
+hash: 3101add6c4aa82e0ceb9ba62b2487508200f69b95b3eeb280ae77cc218ecaad1
