@@ -1,52 +1,29 @@
-# Technical Design: Frontend Modernization (React 19 & Vite 6)
+# Technical Design: UI Dependency Modernization (React 19, MUI v6, Vite 6)
 
 ## Architecture & Component Interaction
-The modern Single Page Application (SPA) renders chat interactions, message streaming, and document inspection:
+The Single Page Application preserves its existing component hierarchy and `src/services/api.js` Axios boundary while upgrading the underlying UI runtime and bundler:
 
 ```mermaid
 flowchart TD
     Browser[User Browser] --> ViteApp[React 19 / Vite 6 App Mount]
-    ViteApp --> ThemeProvider[MUI v6 ThemeProvider]
-    ThemeProvider --> ChatView[Chat Interface & Message History]
-    ChatView --> MarkdownRenderer[React Markdown & Syntax Highlighter]
-    ChatView --> AxiosClient[Axios API Client]
+    ViteApp --> Router[React Router v7]
+    Router --> ThemeProvider[MUI v6 ThemeProvider + Emotion 11.13]
+    ThemeProvider --> ChatView[Chat Interface & DocumentIndexPanel / x-date-pickers v7]
+    ChatView --> MarkdownRenderer[React Markdown]
+    ChatView --> AxiosClient[src/services/api.js Axios Client]
     AxiosClient --> BackendAPI[FastAPI Backend /api/v1]
 ```
 
 ## Interface Contracts & Schemas
-The frontend consumes the standard REST API:
-- `POST /api/v1/chat`: `{ query: string, session_id?: string, history?: array }` -> `{ answer: string, sources: array, session_id: string }`
-- `GET /api/v1/history/{session_id}`: returns past conversation turns.
+- **Backend API Boundary (`src/services/api.js`)**: Existing Axios request/response handling is preserved unchanged (`[UNVERIFIED: sibling rag-chatbot backend /api/v1/chat and /api/v1/history contracts assumed unchanged and not modified by this UI repo]`).
+- **Idempotency & Retries**: No automatic retry is added to mutating `POST` chat endpoints; standard user-initiated retry on error remains unchanged.
 
-## External API Integration & Resilience
-- **Axios HTTP Client**: Interceptor for token/session propagation, timeout limits (30s default), and automatic retry for network errors.
-- **WebSocket / EventSource**: Future-proofed hooks for token streaming responses.
+## Dependency & Peer Resolution Strategy
+- **Exact Major Upgrades**: `react@^19.0.0`, `react-dom@^19.0.0`, `@types/react@^19.0.0`, `@types/react-dom@^19.0.0`, `@mui/material@^6.1.0`, `@mui/icons-material@^6.1.0`, `@mui/x-date-pickers@^7.22.0`, `react-router-dom@^7.0.0`, `vite@^6.0.0`, `@vitejs/plugin-react@^4.3.4`.
+- **Peer Dependency Overrides**: Any third-party peer constraint mismatches (e.g., `@react-oauth/google` or Emotion React 19 peer ranges) are resolved deterministically via `package.json` `overrides` rather than `--legacy-peer-deps`.
+- **Security Gate**: `npm audit --audit-level=high` verifies zero high/critical vulnerabilities in the resolved dependency tree.
+- **Rollback Plan**: `git revert <commit>` restores `package.json` and `package-lock.json` cleanly.
 
-## UI/UX Design Specifications
-
-### Design Direction & Grounding
-- **Archetype**: High-density engineering intelligence interface with crisp typography and understated elevation.
-- **Color Palette Tokens**:
-  - Primary Accent: `#2563eb` (`--color-primary`)
-  - Primary Hover: `#1d4ed8` (`--color-primary-hover`)
-  - Background: `#0f172a` (dark mode `--color-background`), `#f8fafc` (light mode)
-  - Surface: `#1e293b` (dark mode `--color-surface`), `#ffffff` (light mode)
-  - Border: `#334155` (`--color-border`)
-  - Text Primary: `#f1f5f9` (`--color-text-primary`)
-- **Typography**:
-  - Headings: `Inter, system-ui, sans-serif`, font-weight 600/700.
-  - Body: `Inter, system-ui, sans-serif`, font-weight 400.
-  - Code/Monospace: `JetBrains Mono, monospace`, font-size 0.875rem.
-
-### Responsive Breakpoints
-- **Mobile**: `<= 640px` (Collapsible sidebar drawer, full-width input container).
-- **Tablet**: `641px - 1024px` (Compact sidebar with icon badges).
-- **Desktop**: `> 1024px` (Full dual-pane layout: chat stream + reference drawer).
-
-### 5 Mandatory Interaction States
-1. **Default**: Clean conversation feed with user bubbles and assistant response cards.
-2. **Hover / Focus**: 150ms ease transition on action buttons with visible 2px focus ring (`:focus-visible`).
-3. **Loading Skeleton**: Shimmering placeholder cards for streaming responses (no blank screens).
-4. **Empty State**: Centered prompt suggestions ("Explore docs", "Explain architecture") with clean iconography.
-5. **Error Banner**: Inline alert notification with error summary and one-click "Retry Query" action.
-
+## UI/UX Preservation & Regression Guardrails
+- Existing color theme, typography, and layout breakpoints — Mobile (`<= 640px`), Tablet (`641px - 1024px`), and Desktop (`> 1024px`) — are preserved without visual redesign.
+- Existing interaction states (Default, Hover/Focus, Loading, Empty, Error) are regression-tested under React 19 + MUI v6 with `axe-core` automated accessibility checks.
