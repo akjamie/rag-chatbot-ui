@@ -1,19 +1,19 @@
 # ASdlc Latest Risk Assessment Snapshot
-# Generated at: 2026-11-12T14:53:43.850Z
-# Change: update-dependencies-get-related-libs (seq: 3)
+# Generated at: 2026-11-13T00:44:12.860Z
+# Change: update-dependencies-get-related-libs (seq: 6)
 
 schema_version: 1
 change_id: update-dependencies-get-related-libs
-seq: 3
-prev_hash: fbb8cae29e4d257b86bcc79d3c8812dfb5ae1ab3b611b9c3d39e29f6a314c60a
-timestamp: 2026-11-12T14:53:43.850Z
+seq: 6
+prev_hash: 44ef2ce87035f46cc9c84b8f1f7414c60c25e88462a68700d684af4cc46d060e
+timestamp: 2026-11-13T00:44:12.860Z
 actor:
   type: system
   id: asdlc
-stage: new
+stage: spec
 role: primary
 compared_to: null
-status: provisional
+status: ready
 verdict: ok
 defaulted_cause: null
 change_type: chore
@@ -70,4 +70,4 @@ transition:
   to_level: L2
   direction: same
   triggers: []
-hash: 3101add6c4aa82e0ceb9ba62b2487508200f69b95b3eeb280ae77cc218ecaad1
+hash: 7c2efd81045f482ab0d6a939d893b510975ce023b727c3ee698cca961eaf8778

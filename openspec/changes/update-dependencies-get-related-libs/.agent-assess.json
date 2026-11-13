@@ -2,3 +2,4 @@
   "classification": "change",
   "rationale": "BREAKING 12-package supply-chain dependency upgrade (React 19, MUI v6, x-date-pickers v7.23+, React Router v7, Vite 6) touching package.json architectural hub."
 }
+
