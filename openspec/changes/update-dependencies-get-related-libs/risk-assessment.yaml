@@ -1,0 +1,73 @@
+# ASdlc Latest Risk Assessment Snapshot
+# Generated at: 2026-11-13T00:44:12.860Z
+# Change: update-dependencies-get-related-libs (seq: 6)
+
+schema_version: 1
+change_id: update-dependencies-get-related-libs
+seq: 6
+prev_hash: 44ef2ce87035f46cc9c84b8f1f7414c60c25e88462a68700d684af4cc46d060e
+timestamp: 2026-11-13T00:44:12.860Z
+actor:
+  type: system
+  id: asdlc
+stage: spec
+role: primary
+compared_to: null
+status: ready
+verdict: ok
+defaulted_cause: null
+change_type: chore
+source:
+  base_sha: origin/main
+  head_sha: HEAD
+  harness_rules_version: 2026.10.0
+  engine_version: 1.9.0
+  task_ref: null
+  models: []
+risk:
+  level: L2
+  confidence: high
+vectors:
+  v1_intent:
+    level: L1
+    confidence: high
+    evaluator_mode: agent_native
+    evidence: []
+    unresolved: []
+    mandatory_human_review: false
+    no_signal: false
+  v2_security:
+    level: L1
+    confidence: high
+    evidence: []
+    unresolved: []
+    mandatory_human_review: false
+    no_signal: true
+  v3_topology:
+    level: L2
+    confidence: high
+    evidence:
+      - id: V3_GRAPHIFY_GOD_NODE
+        kind: topology_centrality
+        signal: hard
+        summary: "Touches Graphify AST architectural hub: package.json (55 inbound
+          refs), src/services/api.js (35 inbound refs)"
+        source: package.json
+    unresolved: []
+    mandatory_human_review: false
+    no_signal: false
+governance:
+  workflow_mode: spec-first
+  spec_approval: human
+  implementation_review: ai+human
+  auto_approval: disabled
+  mode: supervised
+reason_codes:
+  - HARD_RULE_HIT
+observations: []
+transition:
+  from_level: L2
+  to_level: L2
+  direction: same
+  triggers: []
+hash: 7c2efd81045f482ab0d6a939d893b510975ce023b727c3ee698cca961eaf8778
