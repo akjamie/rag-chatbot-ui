@@ -9,3 +9,5 @@ level: "L2"
 levelReason: "Touches Graphify AST architectural hub: package.json (55 inbound refs), src/services/api.js (35 inbound refs)"
 targetBranch: "jamie"
 lastPrType: "spec"
+specSha: a2da6b0607fe8716ce2190e9b23ae0187b7dcd50
+status: ready_for_impl

@@ -530,6 +530,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                 <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                   <IconButton 
                     size="small"
+                    aria-label="Like message"
                     onClick={() => handleLike(message.request_id, true)}
                     color={message.liked === true ? 'primary' : 'default'}
                     sx={{ 
@@ -543,6 +544,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
                   </IconButton>
                   <IconButton 
                     size="small"
+                    aria-label="Dislike message"
                     onClick={() => handleLike(message.request_id, false)}
                     color={message.liked === false ? 'primary' : 'default'}
                     sx={{ 
@@ -577,7 +579,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
 
   // Improved scroll to bottom function
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === 'function') {
       messagesEndRef.current.scrollIntoView({ 
         behavior: 'smooth',
         block: 'end'
@@ -828,6 +830,7 @@ function ChatArea({ selectedChat, onNewSession, user }) {
               <Box sx={{ display: 'flex', gap: 1, mr: 1 }}>
                 <IconButton 
                   type="submit" 
+                  aria-label="Send message"
                   disabled={!input.trim() || isLoading}
                   sx={{ 
                     bgcolor: 'primary.main',
